@@ -85,15 +85,6 @@ function pct1(valor) {
   return `${(Math.abs(valor) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 }
 
-function pctFatia(valor) {
-  if (valor > 0 && valor < 0.001) return "menos de 0,1%";
-  return pct1(valor);
-}
-
-function porCem(valor) {
-  return valor.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
-
 function juntar(partes) {
   if (partes.length <= 1) return partes[0] || "";
   return `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}`;
@@ -103,52 +94,14 @@ function quaseParado(delta, base) {
   return Math.abs(delta) < Math.max(1, Math.abs(base) * 0.01);
 }
 
-function fraseMovimento(delta, base, unidade, plural = false) {
+function fraseMovimento(delta, base, unidade) {
   const detalhe = ` (${delta >= 0 ? "+" : "−"}${pct1(base ? delta / base : 0)})`;
-  const parado = plural ? "ficam" : "fica";
-  const sobe = plural ? "sobem" : "sobe";
-  const cai = plural ? "caem" : "cai";
   if (quaseParado(delta, base)) {
     const lado = delta > 0 ? " para mais" : delta < 0 ? " para menos" : "";
-    return `${parado} praticamente no mesmo patamar, com diferença de ${inteiro(Math.abs(delta))}${lado}${detalhe}`;
+    return `fica praticamente no mesmo patamar, com diferença de ${inteiro(Math.abs(delta))}${lado}${detalhe}`;
   }
-  if (delta > 0) return `${sobe} ${inteiro(delta)}${unidade}${detalhe}`;
-  return `${cai} ${inteiro(Math.abs(delta))}${unidade}${detalhe}`;
-}
-
-function detalheProprio(item) {
-  if (!item.base) return "";
-  const proprio = item.delta / item.base;
-  if (Math.abs(proprio) >= 5) return ` (a série tinha ${inteiro(item.base)})`;
-  const origem = Math.abs(proprio) >= 0.5 ? `, que tinha ${inteiro(item.base)}` : "";
-  return ` (${item.delta >= 0 ? "+" : "−"}${pct1(proprio)} na própria série${origem})`;
-}
-
-function movimentoCurto(item) {
-  const plural = item.nome.startsWith("Demais");
-  if (item.delta > 0) return `${plural ? "sobem" : "sobe"} ${inteiro(item.delta)}${detalheProprio(item)}`;
-  if (item.delta < 0) return `${plural ? "caem" : "cai"} ${inteiro(Math.abs(item.delta))}${detalheProprio(item)}`;
-  return plural ? "não mudam" : "não muda";
-}
-
-function fraseFatia(itens) {
-  const base = itens.reduce((acumulado, item) => acumulado + item.base, 0);
-  const agora = itens.reduce((acumulado, item) => acumulado + item.agora, 0);
-  if (!base || !agora) return "";
-  const limite = itens.length <= 2 ? 1 : 2;
-  const mudancas = itens
-    .map((item) => ({
-      nome: item.nome,
-      antes: item.base / base,
-      depois: item.agora / agora,
-      deslocamento: item.agora / agora - item.base / base,
-    }))
-    .filter((item) => Math.abs(item.deslocamento) >= 0.01)
-    .sort((a, b) => Math.abs(b.deslocamento) - Math.abs(a.deslocamento))
-    .slice(0, limite);
-  if (!mudancas.length) return "";
-  const partes = mudancas.map((item) => `a fatia de ${item.nome} passa de ${pctFatia(item.antes)} para ${pctFatia(item.depois)}`);
-  return ` ${juntar(partes).replace(/^a/, "A")}.`;
+  if (delta > 0) return `sobe ${inteiro(delta)}${unidade}${detalhe}`;
+  return `cai ${inteiro(Math.abs(delta))}${unidade}${detalhe}`;
 }
 
 function paragrafo(titulo, texto, classe) {
@@ -161,6 +114,45 @@ function paragrafo(titulo, texto, classe) {
   }
   elemento.appendChild(document.createTextNode(texto));
   return elemento;
+}
+
+function periodosAnuais(observado) {
+  const meses = total.meses;
+  const inicio = meses.findIndex((mes) => mes.endsWith("-08"));
+  const periodos = [];
+  for (let indice = inicio; indice + 11 < meses.length; indice += 12) {
+    const [anoInicio] = meses[indice].split("-");
+    const [anoFim] = meses[indice + 11].split("-");
+    periodos.push({
+      rotulo: `${anoInicio}–${anoFim}`,
+      total: soma(observado.slice(indice, indice + 12)),
+    });
+  }
+  return periodos;
+}
+
+function itensPrevisao() {
+  const extrair = (serie) => ({ base: soma(serie.ano_anterior), agora: soma(serie.tft) });
+  const itens = [];
+  ["sexo", "carater", "diagnostico"].forEach((quebra) => {
+    itensDaQuebra(quebra, extrair).forEach((item) => {
+      if (item.nome.startsWith("Demais")) return;
+      if (item.base < 100 && Math.abs(item.delta) < 100) return;
+      itens.push(item);
+    });
+  });
+  return itens;
+}
+
+function paresGrupo(quebra, nome) {
+  const serie = quebrasDados.quebras[quebra].series[estadoEl.value][nome];
+  if (!serie) return null;
+  return {
+    nome,
+    base: soma(serie.ano_anterior),
+    agora: soma(serie.tft),
+    delta: soma(serie.tft) - soma(serie.ano_anterior),
+  };
 }
 
 function estadoSelecionado() {
@@ -178,157 +170,214 @@ function itensDaQuebra(quebra, extrair) {
   return bloco.grupos.map((grupo) => ({ nome: grupo, ...pares(series[grupo], extrair) }));
 }
 
-function entraNaLeitura(item) {
-  return item.base >= 100 || Math.abs(item.delta) >= 100;
-}
-
-function textoCorte(itens, historia) {
-  const fatia = fraseFatia(itens);
-  const visiveis = itens.filter(entraNaLeitura);
-  if (!historia) {
-    const base = itens.reduce((acumulado, item) => acumulado + item.base, 0);
-    const delta = itens.reduce((acumulado, item) => acumulado + item.delta, 0);
-    const frases = [...visiveis]
-      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-      .map((item) => `${item.nome} ${movimentoCurto(item)}`);
-    const lista = frases.length ? ` ${juntar(frases)}.` : "";
-    return `A soma ${fraseMovimento(delta, base, " internações")}.${lista}${fatia}`;
-  }
-  const sobem = visiveis.filter((item) => item.delta >= 0).sort((a, b) => b.delta - a.delta);
-  const descem = visiveis.filter((item) => item.delta < 0).sort((a, b) => a.delta - b.delta);
-  const alta = sobem.map((item, indice) => (indice === 0
-    ? `${item.nome} responde por ${inteiro(item.delta)}`
-    : `${item.nome} por ${inteiro(item.delta)}`));
-  const baixa = descem.map((item) => `${item.nome} tira ${inteiro(Math.abs(item.delta))}`);
-  const corpo = [
-    alta.length ? juntar(alta) : "",
-    baixa.length ? `${alta.length ? "No sentido contrário, " : ""}${juntar(baixa)}` : "",
-  ].filter(Boolean).join(". ");
-  return `${corpo}.${fatia}`;
-}
-
-function resposta(item) {
-  const plural = item.nome.startsWith("Demais");
-  if (item.delta >= 0) return `${plural ? "respondem" : "responde"} por ${inteiro(item.delta)}`;
-  return `${plural ? "tiram" : "tira"} ${inteiro(Math.abs(item.delta))}`;
-}
-
-function textoDiagnostico(itens, historia) {
-  const demais = itens.find((item) => item.nome.startsWith("Demais"));
-  const nomeados = itens.filter((item) => item !== demais && entraNaLeitura(item));
-  const maiores = [...nomeados].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 3);
-  const base = itens.reduce((acumulado, item) => acumulado + item.base, 0);
-  const delta = itens.reduce((acumulado, item) => acumulado + item.delta, 0);
-  const abertura = historia
-    ? ""
-    : `A soma ${fraseMovimento(delta, base, " internações")}. `;
-  const residual = demais
-    ? `Demais diagnósticos ${historia ? `${resposta(demais)}${detalheProprio(demais)}` : movimentoCurto(demais)}. `
-    : "";
-  const lista = maiores.map((item) => `${item.nome} ${historia ? `${resposta(item)}${detalheProprio(item)}` : movimentoCurto(item)}`);
-  const nomeadosTexto = lista.length ? `Entre os quinze nomeados, ${juntar(lista)}.` : "";
-  return `${abertura}${residual}${nomeadosTexto}${fraseFatia(itens)}`;
-}
-
-function textoAcompanha(rotulo, item, totalItem) {
-  const taxaAntes = totalItem.base ? (100 * item.base) / totalItem.base : 0;
-  const taxaDepois = totalItem.agora ? (100 * item.agora) / totalItem.agora : 0;
-  const taxa = porCem(taxaAntes) === porCem(taxaDepois)
-    ? `A taxa segue em ${porCem(taxaDepois)} por 100 internações.`
-    : `A taxa passa de ${porCem(taxaAntes)} para ${porCem(taxaDepois)} por 100 internações.`;
-  let relacao = "";
-  if (!quaseParado(totalItem.delta, totalItem.base) && !quaseParado(item.delta, item.base)) {
-    const mesmoSentido = item.delta > 0 === totalItem.delta > 0;
-    const taxaCai = taxaDepois < taxaAntes - 0.05;
-    const taxaSobe = taxaDepois > taxaAntes + 0.05;
-    const taxaNoOutroSentido = (item.delta > 0 && taxaCai) || (item.delta < 0 && taxaSobe);
-    if (mesmoSentido && taxaNoOutroSentido) relacao = " A contagem vai com o total, e a taxa vai no outro sentido.";
-    else if (mesmoSentido) relacao = " O movimento acompanha o total.";
-    else relacao = " Esse movimento e o do total vão em sentidos opostos.";
-  }
-  return `As internações ${rotulo} ${fraseMovimento(item.delta, item.base, "", true)}. ${taxa}${relacao}`;
-}
-
-function janelaHistorico() {
-  const meses = total.meses;
-  const primeiro = Math.max(0, meses.findIndex((mes) => mes >= inicioEl.value));
-  const tamanho = meses.length - primeiro;
-  if (tamanho < 2) return null;
-  if (primeiro >= tamanho) {
-    const inicioBase = primeiro - tamanho;
-    return {
-      base: [inicioBase, primeiro],
-      atual: [primeiro, meses.length],
-      texto: `De ${nomeMes(meses[primeiro])} a ${nomeMes(meses[meses.length - 1])}, contra ${nomeMes(meses[inicioBase])} a ${nomeMes(meses[primeiro - 1])},`,
-      seguido: true,
-    };
-  }
-  const meio = primeiro + Math.floor(tamanho / 2);
-  return {
-    base: [primeiro, meio],
-    atual: [meio, meses.length],
-    texto: `O recorte desde ${nomeMes(meses[primeiro])} não tem um período anterior do mesmo tamanho. A comparação usa ${nomeMes(meses[meio])} a ${nomeMes(meses[meses.length - 1])} contra ${nomeMes(meses[primeiro])} a ${nomeMes(meses[meio - 1])}.`,
+function comoGrupo(item) {
+  const nomes = {
+    Feminino: "as internações de mulheres",
+    Masculino: "as internações de homens",
+    Eletiva: "a internação eletiva",
+    Urgência: "a urgência",
+    "Acidente ou lesão": "acidente ou lesão",
   };
+  return nomes[item.nome] || item.nome;
+}
+
+function semSexoRepetido(itens) {
+  const feminino = itens.find((item) => item.nome === "Feminino");
+  const masculino = itens.find((item) => item.nome === "Masculino");
+  if (feminino && masculino && (feminino.delta > 0) === (masculino.delta > 0)) {
+    return itens.filter((item) => item.nome !== "Feminino" && item.nome !== "Masculino");
+  }
+  return itens;
+}
+
+function maioresNoSentido(itens, positivo) {
+  return itens
+    .filter((item) => (positivo ? item.delta > 0 : item.delta < 0))
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+}
+
+function textoPorque(delta, base, itens) {
+  if (quaseParado(delta, base)) {
+    const sobe = maioresNoSentido(itens, true)[0];
+    const desce = maioresNoSentido(itens, false)[0];
+    let frase = "O total previsto quase não muda, então não há um grupo que explique uma alta ou uma queda do conjunto.";
+    if (sobe && desce) {
+      frase += ` Por dentro, o maior deslocamento é ${comoGrupo(sobe)}, com ${inteiro(sobe.delta)} a mais, e ${comoGrupo(desce)}, com ${inteiro(Math.abs(desce.delta))} a menos.`;
+    }
+    return `${frase} Sexo, caráter e diagnóstico se cruzam: a mesma internação pode contar nas três leituras.`;
+  }
+  const principais = semSexoRepetido(maioresNoSentido(itens, delta > 0)).slice(0, 3);
+  if (!principais.length) {
+    return `Os dois sexos acompanham essa ${delta > 0 ? "alta" : "queda"}, sem um caráter ou diagnóstico nomeado que se destaque na previsão.`;
+  }
+  const pedacos = principais.map((item) => `${comoGrupo(item)} (${inteiro(Math.abs(item.delta))} ${item.delta > 0 ? "a mais" : "a menos"})`);
+  const verbo = delta > 0 ? "alta" : "queda";
+  let frase = `O que mais acompanha essa ${verbo} é ${juntar(pedacos)}.`;
+  frase += " É uma leitura aparente: cada série foi prevista à parte, e uma internação pode entrar em mais de um grupo.";
+  const contrario = maioresNoSentido(itens, delta < 0)[0];
+  if (contrario && Math.abs(contrario.delta) >= Math.abs(principais[0].delta) * 0.35) {
+    frase += ` No outro sentido, ${comoGrupo(contrario)} tem ${inteiro(Math.abs(contrario.delta))} ${contrario.delta > 0 ? "a mais" : "a menos"}.`;
+  }
+  return frase;
+}
+
+function textoTendencia(periodos, previsto) {
+  if (periodos.length < 3) return "";
+  const ultimos = periodos.slice(-3);
+  const passos = [
+    ultimos[1].total - ultimos[0].total,
+    ultimos[2].total - ultimos[1].total,
+  ];
+  const piso = ultimos[0].total * 0.01;
+  const alta = passos.every((passo) => passo > piso);
+  const queda = passos.every((passo) => passo < -piso);
+  const delta = previsto - ultimos[2].total;
+  const nomes = ultimos.map((periodo) => periodo.rotulo).join(", ");
+  if (alta && quaseParado(delta, ultimos[2].total)) {
+    return `Os períodos ${nomes} vieram em alta. A previsão segura o nível de ${ultimos[2].rotulo} e não projeta outra alta desse tamanho.`;
+  }
+  if (queda && quaseParado(delta, ultimos[2].total)) {
+    return `Os períodos ${nomes} vieram em queda. A previsão segura o nível de ${ultimos[2].rotulo}.`;
+  }
+  if (alta && delta > 0) return `A previsão continua a alta dos períodos ${nomes}.`;
+  if (queda && delta < 0) return `A previsão continua a queda dos períodos ${nomes}.`;
+  if (alta && delta < 0) return `A previsão interrompe a alta dos períodos ${nomes}.`;
+  if (queda && delta > 0) return `A previsão interrompe a queda dos períodos ${nomes}.`;
+  return "";
+}
+
+function sugerir(delta, ultimo, media, previsto, itens) {
+  const lista = [];
+  const relevante = (valor, baseGrupo) => Math.abs(valor) >= Math.max(200, Math.abs(baseGrupo || ultimo) * 0.02);
+  const eletiva = itens.find((item) => item.nome === "Eletiva");
+  const urgencia = itens.find((item) => item.nome === "Urgência");
+  const partos = itens.filter((item) => ["O800 parto normal", "O809 parto normal", "O829 cesariana"].includes(item.nome));
+  const pneumonia = itens.filter((item) => ["J189 pneumonia", "J159 pneumonia bacteriana"].includes(item.nome));
+  const somar = (grupo, campo) => grupo.reduce((acumulado, item) => acumulado + item[campo], 0);
+  const uti = paresGrupo("uti", "Com UTI");
+  const obito = paresGrupo("obito", "Óbito");
+
+  if (quaseParado(delta, ultimo) && previsto > media * 1.03) {
+    lista.push("Manter a escala e os leitos do último período. A previsão segue acima da média antiga e não pede outra expansão.");
+  } else if (delta < 0 && relevante(delta)) {
+    const aindaAlto = previsto > media ? " O número ainda fica acima da média antiga, então a rede atual se mantém." : "";
+    lista.push(`Não abrir capacidade permanente com base nesta previsão. O total fica abaixo do último período.${aindaAlto} O ajuste é de escala e de fila, revisto quando os primeiros meses fecharem.`);
+  } else if (delta > 0 && relevante(delta)) {
+    lista.push("Preparar a rede para um volume maior do que o último período. O número é uma previsão, não uma meta.");
+  }
+
+  if (eletiva && eletiva.delta > 0 && relevante(eletiva.delta, eletiva.base)) {
+    lista.push("Antecipar a fila eletiva e a agenda cirúrgica. Esse volume dá para ordenar antes da internação.");
+  }
+  if (lista.length < 3 && urgencia && urgencia.delta > 0 && relevante(urgencia.delta, urgencia.base)) {
+    lista.push("Reforçar a porta de urgência. Esse volume não entra por agendamento.");
+  }
+  if (lista.length < 3 && somar(partos, "delta") > 0 && relevante(somar(partos, "delta"), somar(partos, "base"))) {
+    lista.push("Rever leitos de obstetrícia. O aumento aparece nos partos nomeados.");
+  }
+  if (lista.length < 3 && somar(pneumonia, "delta") > 0 && relevante(somar(pneumonia, "delta"), somar(pneumonia, "base"))) {
+    lista.push("Reservar leito clínico para pneumonia nos meses de inverno cobertos pela previsão.");
+  }
+  if (lista.length < 3 && uti && ultimo && previsto) {
+    const antes = (100 * uti.base) / ultimo;
+    const depois = (100 * uti.agora) / previsto;
+    if (depois > antes + 0.3) {
+      lista.push("Conferir a ocupação de UTI. A taxa prevista sobe em relação ao último período.");
+    }
+  }
+  if (lista.length < 3 && obito && ultimo && previsto) {
+    const antes = (100 * obito.base) / ultimo;
+    const depois = (100 * obito.agora) / previsto;
+    if (depois > antes + 0.3) {
+      lista.push("A taxa de óbito prevista sobe. O ponto de atenção é a gravidade dos casos, não só a quantidade de leitos.");
+    }
+  }
+  if (!lista.length) {
+    lista.push("A previsão não separa um grupo que mude o total o bastante para uma ação própria. O passo útil é repetir a organização do último período.");
+  }
+  return lista.slice(0, 3);
+}
+
+function celula(texto) {
+  const coluna = document.createElement("td");
+  coluna.textContent = texto;
+  return coluna;
 }
 
 function escreverAnalise() {
+  const corpoAnual = document.querySelector("#tabela-anual tbody");
   analiseTexto.replaceChildren();
+  if (corpoAnual) corpoAnual.replaceChildren();
   if (!total) return;
   if (!quebrasDados) {
-    analiseTexto.appendChild(paragrafo("", "A leitura das quebras entra quando a tabela termina de carregar.", "olho-analise"));
+    analiseTexto.appendChild(paragrafo("", "A leitura entra quando a tabela termina de carregar.", "olho-analise"));
     return;
   }
+
   const uf = estadoSelecionado();
-  const extrairPrevisao = (serie) => ({ base: soma(serie.ano_anterior), agora: soma(serie.tft) });
-  const totalPrevisto = pares(uf, extrairPrevisao);
-  const inicioPrevisto = nomeMes(total.horizonte[0]);
-  const fimPrevisto = nomeMes(total.horizonte[total.horizonte.length - 1]);
-  const inicioBase = nomeMes(total.meses[total.meses.length - total.horizonte.length]);
-  const fimBase = nomeMes(total.meses[total.meses.length - 1]);
-  const deltaLstm = soma(uf.lstm) - soma(uf.ano_anterior);
-  const avisoLstm = !quaseParado(totalPrevisto.delta, totalPrevisto.base)
-    && !quaseParado(deltaLstm, totalPrevisto.base)
-    && (totalPrevisto.delta > 0) !== (deltaLstm > 0)
-    ? ` O LSTM ${fraseMovimento(deltaLstm, totalPrevisto.base, " internações")}.`
+  const periodos = periodosAnuais(uf.observado);
+  const media = periodos.reduce((acumulado, periodo) => acumulado + periodo.total, 0) / periodos.length;
+  const ultimo = soma(uf.ano_anterior);
+  const previsto = soma(uf.tft);
+  const delta = previsto - ultimo;
+  const itens = itensPrevisao();
+  const deltaLstm = soma(uf.lstm) - ultimo;
+  const avisoLstm = !quaseParado(delta, ultimo) && !quaseParado(deltaLstm, ultimo) && (delta > 0) !== (deltaLstm > 0)
+    ? ` O LSTM vai no outro sentido e ${fraseMovimento(deltaLstm, ultimo, " internações")}.`
     : "";
 
+  let anterior = null;
+  periodos.forEach((periodo) => {
+    const linha = document.createElement("tr");
+    const contraAnterior = anterior === null ? "—" : `${periodo.total >= anterior ? "+" : "−"}${pct1((periodo.total - anterior) / anterior)}`;
+    const contraMedia = `${periodo.total >= media ? "+" : "−"}${pct1((periodo.total - media) / media)}`;
+    linha.append(celula(periodo.rotulo), celula(inteiro(periodo.total)), celula(contraAnterior), celula(contraMedia));
+    corpoAnual.appendChild(linha);
+    anterior = periodo.total;
+  });
+  const linhaPrevista = document.createElement("tr");
+  linhaPrevista.className = "previsto";
+  linhaPrevista.append(
+    celula("2026–2027, previsão"),
+    celula(inteiro(previsto)),
+    celula(`${delta >= 0 ? "+" : "−"}${pct1(delta / ultimo)}`),
+    celula(`${previsto >= media ? "+" : "−"}${pct1((previsto - media) / media)}`),
+  );
+  corpoAnual.appendChild(linhaPrevista);
+
+  const contraMedia = previsto >= media
+    ? `${pct1((previsto - media) / media)} acima da média`
+    : `${pct1((media - previsto) / media)} abaixo da média`;
+  const tendencia = textoTendencia(periodos, previsto);
   analiseTexto.appendChild(paragrafo(
     "",
-    `${nomeEstado(uf.sigla)}. Cada bloco usa a própria série: sexo, caráter e diagnóstico leem as mesmas internações por caminhos diferentes, e os números de um bloco não se somam aos de outro.`,
+    `${nomeEstado(uf.sigla)}. Cada linha da tabela é agosto a julho, doze meses, o mesmo tamanho da previsão. A média de ${inteiro(media)} usa só os períodos já observados.`,
     "olho-analise",
   ));
   analiseTexto.appendChild(paragrafo(
     "Previsão",
-    `O TFT de ${inicioPrevisto} a ${fimPrevisto} ${fraseMovimento(totalPrevisto.delta, totalPrevisto.base, " internações")} em relação a ${inicioBase} a ${fimBase}.${avisoLstm}`,
+    `De agosto de 2026 a julho de 2027, o TFT soma ${inteiro(previsto)} internações. Em relação a agosto de 2025 a julho de 2026, ${fraseMovimento(delta, ultimo, " internações")}. Esse total fica ${contraMedia} dos períodos desde 2008–2009.${avisoLstm} ${tendencia}`.trim(),
   ));
-  analiseTexto.appendChild(paragrafo("Sexo", textoCorte(itensDaQuebra("sexo", extrairPrevisao), false)));
-  analiseTexto.appendChild(paragrafo("Caráter", textoCorte(itensDaQuebra("carater", extrairPrevisao), false)));
-  analiseTexto.appendChild(paragrafo("Diagnóstico", textoDiagnostico(itensDaQuebra("diagnostico", extrairPrevisao), false)));
-  const obitoPrevisto = itensDaQuebra("obito", extrairPrevisao)[0];
-  const utiPrevista = itensDaQuebra("uti", extrairPrevisao)[0];
-  analiseTexto.appendChild(paragrafo("Óbito", textoAcompanha("com óbito", obitoPrevisto, totalPrevisto)));
-  analiseTexto.appendChild(paragrafo("UTI", textoAcompanha("com UTI", utiPrevista, totalPrevisto)));
+  analiseTexto.appendChild(paragrafo("Peso aparente", textoPorque(delta, ultimo, itens)));
 
-  const janela = janelaHistorico();
-  if (janela) {
-    const extrairHistoria = (serie) => ({
-      base: soma(serie.observado.slice(janela.base[0], janela.base[1])),
-      agora: soma(serie.observado.slice(janela.atual[0], janela.atual[1])),
-    });
-    const totalHistorico = pares(uf, extrairHistoria);
-    analiseTexto.appendChild(paragrafo(
-      "Histórico",
-      `${janela.texto} ${janela.seguido ? "o" : "O"} observado ${fraseMovimento(totalHistorico.delta, totalHistorico.base, " internações")}. Nesta parte as quebras fecham o total.`,
-    ));
-    analiseTexto.appendChild(paragrafo("Sexo no histórico", textoCorte(itensDaQuebra("sexo", extrairHistoria), true)));
-    analiseTexto.appendChild(paragrafo("Caráter no histórico", textoCorte(itensDaQuebra("carater", extrairHistoria), true)));
-    analiseTexto.appendChild(paragrafo("Diagnóstico no histórico", textoDiagnostico(itensDaQuebra("diagnostico", extrairHistoria), true)));
-    analiseTexto.appendChild(paragrafo("Óbito no histórico", textoAcompanha("com óbito", itensDaQuebra("obito", extrairHistoria)[0], totalHistorico)));
-    analiseTexto.appendChild(paragrafo("UTI no histórico", textoAcompanha("com UTI", itensDaQuebra("uti", extrairHistoria)[0], totalHistorico)));
-  }
+  const tituloAcoes = document.createElement("h3");
+  tituloAcoes.textContent = "O que dá para preparar";
+  analiseTexto.appendChild(tituloAcoes);
+  const lista = document.createElement("ul");
+  sugerir(delta, ultimo, media, previsto, itens).forEach((texto) => {
+    const item = document.createElement("li");
+    item.textContent = texto;
+    lista.appendChild(item);
+  });
+  analiseTexto.appendChild(lista);
+  analiseTexto.appendChild(paragrafo(
+    "",
+    "As ações são hipóteses de organização do serviço. A série não demonstra a causa clínica.",
+    "olho-analise",
+  ));
   if (fator() !== 1) {
     const sinal = `${fator() > 1 ? "+" : ""}${Math.round((fator() - 1) * 100)}%`;
-    analiseTexto.appendChild(paragrafo("", `A simulação de ${sinal} fica de fora desta leitura.`, "olho-analise"));
+    analiseTexto.appendChild(paragrafo("", `A simulação de ${sinal} fica de fora desta leitura e da tabela.`, "olho-analise"));
   }
 }
 
