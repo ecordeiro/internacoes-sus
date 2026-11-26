@@ -35,7 +35,8 @@
       Mostrar
       <select id="modo">
         <option value="quantidade">internações</option>
-        <option value="indice">índice, 2015 = 100</option>
+        <option value="indice">formato da curva: a média de 2015 vale 100</option>
+        <option value="ticket">ticket médio</option>
       </select>
     </label>
   </section>
@@ -67,13 +68,16 @@
 
   <footer>
     <p>
-      As duas linhas são contagens de internações no estado do hospital.
+      Internações mostra a quantidade. No formato da curva, 100 é a média de um mês de 2015 daquela série:
+      120 quer dizer 20% acima dessa média. As duas linhas passam a começar na mesma altura, e o gráfico
+      mostra quem cresceu mais, sem misturar o tamanho do SUS com o da ANS.
+    </p>
+    <p>
+      O ticket médio é o valor do mês dividido pelas internações do mês, em reais da época, sem correção pela inflação.
+      No SUS, o valor é o aprovado da AIH. Na ANS, é o valor pago no evento, e ele só existe a partir de 2023.
       No SUS, o mês é a data de internação. Na ANS, o mês é o do evento.
-      O SUS atende a população usuária do sistema público. A ANS registra a internação de plano de saúde.
-      O índice usa a média mensal de 2015 de cada série como 100, para comparar o formato da curva.
-      A janela comum vai de janeiro de 2015 a dezembro de 2025.
     </p>
   </footer>
-  <script src="comparar.js"></script>
+  <script src="comparar.js?v=4"></script>
 </body>
 </html>

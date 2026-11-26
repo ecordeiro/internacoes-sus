@@ -2,7 +2,9 @@
 
 Cada linha do consolidado é uma internação. O mês é o do evento e o
 estado é o da pasta, que é o do prestador. O valor pago só existe a
-partir de 2023, então essa série fica no histórico, sem LSTM nem TFT.
+partir de 2023. A contagem usa 24 meses de memória. O valor usa 12,
+porque três anos não comportam a janela da contagem. O ticket previsto
+é o valor previsto dividido pela previsão de internações.
 """
 
 import json
@@ -160,14 +162,21 @@ def painel(longo: pd.DataFrame, quebra: str, grupos: list[str] | None = None) ->
     return largo.reindex(index=meses, columns=colunas).fillna(0).astype(int)
 
 
-def treinar(quadro: pd.DataFrame, nome: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def treinar(quadro: pd.DataFrame, nome: str, janela: int = 24) -> tuple[pd.DataFrame, pd.DataFrame]:
     tft_caminho = MODELOS / f"previsao_{nome}_tft.parquet"
     lstm_caminho = MODELOS / f"previsao_{nome}_lstm.parquet"
     if tft_caminho.exists() and lstm_caminho.exists():
         print(f"{nome}: previsão já gravada", flush=True)
         return pd.read_parquet(tft_caminho), pd.read_parquet(lstm_caminho)
     MODELOS.mkdir(parents=True, exist_ok=True)
-    return prever(quadro, MODELOS, nome, corte=CORTE, inicio_futuro=INICIO_FUTURO)
+    return prever(quadro, MODELOS, nome, corte=CORTE, inicio_futuro=INICIO_FUTURO, janela=janela)
+
+
+def painel_valor(longo: pd.DataFrame) -> pd.DataFrame:
+    fatia = longo.loc[longo["quebra"].eq("total") & longo["mes"].between(INICIO_VALOR, FIM)]
+    largo = fatia.pivot(index="mes", columns="uf", values="valor")
+    meses = pd.date_range(INICIO_VALOR, FIM, freq="MS")
+    return largo.reindex(index=meses, columns=list(UFS)).astype(float)
 
 
 def inteiros(valores) -> list[int]:
@@ -213,6 +222,19 @@ def gravar(longo: pd.DataFrame, modelos: dict[str, tuple[pd.DataFrame, pd.DataFr
             "valor": [None if pd.isna(item) else int(round(item)) for item in pago],
             "ticket": [None if pd.isna(item) else round(float(item), 2) for item in ticket],
         }
+        if "valor" in modelos:
+            valor_tft, valor_lstm = modelos["valor"]
+            contagem_tft, contagem_lstm = modelos["total"]
+            ticket_tft = valor_tft[uf].to_numpy() / contagem_tft[uf].clip(lower=1).to_numpy()
+            ticket_lstm = valor_lstm[uf].to_numpy() / contagem_lstm[uf].clip(lower=1).to_numpy()
+            valor[uf].update({
+                "valor_tft": inteiros(valor_tft[uf]),
+                "valor_lstm": inteiros(valor_lstm[uf]),
+                "valor_ano_anterior": inteiros(pago.iloc[-12:]),
+                "ticket_tft": [round(float(item), 2) for item in ticket_tft],
+                "ticket_lstm": [round(float(item), 2) for item in ticket_lstm],
+                "ticket_ano_anterior": [None if pd.isna(item) else round(float(item), 2) for item in ticket.iloc[-12:]],
+            })
     payload = {
         "meses": meses,
         "horizonte": horizonte,
@@ -231,6 +253,7 @@ def main() -> None:
     modelos = {"total": treinar(painel(longo, "total"), "ans_total")}
     for quebra, grupos in ORDEM.items():
         modelos[quebra] = treinar(painel(longo, quebra, grupos), f"ans_{quebra}")
+    modelos["valor"] = treinar(painel_valor(longo), "ans_valor", janela=12)
     gravar(longo, modelos)
 
 

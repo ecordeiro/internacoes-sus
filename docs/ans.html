@@ -107,10 +107,11 @@
     </p>
     <p>
       O valor é o pago no evento, em reais da época, e só existe a partir de 2023.
-      Esses três anos não alimentam o mesmo modelo da contagem, então valor e ticket ficam no histórico.
+      Por isso a previsão de valor usa 12 meses de memória, e a de internações usa 24.
+      O ticket previsto é esse valor dividido pela previsão de internações.
       A simulação só multiplica a previsão exibida. Ela não treina o modelo de novo e não entra na leitura.
     </p>
   </footer>
-  <script src="ans.js?v=3"></script>
+  <script src="ans.js?v=4"></script>
 </body>
 </html>

@@ -53,7 +53,7 @@ function dinheiro(quebra) {
 
 function aplicar(valores) {
   if (!valores) return null;
-  const escala = dinheiro(quebraAtual) ? 1 : fator();
+  const escala = fator();
   const casas = quebraAtual === "ticket" ? 2 : 0;
   const potencia = 10 ** casas;
   return valores.map((valor) => Math.max(0, Math.round(valor * escala * potencia) / potencia));
@@ -79,20 +79,28 @@ function nomeEstado(sigla) {
   return ans.estados.find((item) => item.sigla === sigla).nome;
 }
 
+function grupoSelecionado() {
+  const quebra = ans.quebras[quebraAtual];
+  if (!quebra) return "";
+  if (quebra.grupos.length === 1) return quebra.grupos[0];
+  return quebra.grupos.includes(grupoEl.value) ? grupoEl.value : quebra.grupos[0];
+}
+
 function serieAtual() {
   const sigla = estadoEl.value;
   if (dinheiro(quebraAtual)) {
     const bloco = ans.valor.series[sigla];
     const rotulo = quebraAtual === "valor" ? "valor pago" : "ticket médio";
+    const tft = bloco[`${quebraAtual}_tft`] || null;
     return {
       meses: ans.valor.meses,
-      horizonte: [],
+      horizonte: tft ? ans.horizonte : [],
       nome: `${nomeEstado(sigla)}, ${rotulo}`,
       valores: {
-        observado: quebraAtual === "valor" ? bloco.valor : bloco.ticket,
-        tft: null,
-        lstm: null,
-        ano_anterior: null,
+        observado: bloco[quebraAtual],
+        tft,
+        lstm: bloco[`${quebraAtual}_lstm`] || null,
+        ano_anterior: bloco[`${quebraAtual}_ano_anterior`] || null,
       },
     };
   }
@@ -104,19 +112,19 @@ function serieAtual() {
       valores: ans.estados.find((item) => item.sigla === sigla),
     };
   }
+  const grupo = grupoSelecionado();
   const quebra = ans.quebras[quebraAtual];
   return {
     meses: ans.meses,
     horizonte: ans.horizonte,
-    nome: `${nomeEstado(sigla)}, ${grupoEl.value}`,
-    valores: quebra.series[sigla][grupoEl.value],
+    nome: `${nomeEstado(sigla)}, ${grupo}`,
+    valores: quebra.series[sigla][grupo],
   };
 }
 
 function atualizarGrupo() {
   const mostra = !["total", "obito", "uti", "valor", "ticket"].includes(quebraAtual);
   caixaGrupo.hidden = !mostra;
-  caixaCenario.hidden = dinheiro(quebraAtual);
   if (!mostra) return;
   const grupos = ans.quebras[quebraAtual].grupos;
   const atual = grupoEl.value;
@@ -201,6 +209,7 @@ function desenhar() {
     itens.push(["tft", escala === 1 ? "TFT" : `TFT ${sinal}`], ["lstm", escala === 1 ? "LSTM" : `LSTM ${sinal}`], ["anterior", "mesmo mês de 2025"]);
   }
   legenda.innerHTML = itens.map(([classe, texto]) => `<span><i class="amostra ${classe}"></i>${texto}</span>`).join("");
+  caixaCenario.hidden = !previsto;
   caixaMeses.hidden = !previsto;
   if (previsto) {
     corpo.innerHTML = atual.horizonte.map((mes, i) => `
@@ -325,21 +334,96 @@ function textoAcao(delta, ultimo, periodosAno) {
   return acoes.slice(0, 3);
 }
 
+function escreverSerieCurta(sigla, serie, nomeSerie) {
+  const linhas = periodos(ans.meses, serie.observado, false);
+  const previsto = soma(serie.tft);
+  const { media, ultimo } = escreverTabela(linhas, true);
+  const delta = previsto - ultimo;
+  const tr = document.createElement("tr");
+  tr.className = "previsto";
+  tr.append(
+    celula("2026, previsão"),
+    celula(numero.format(Math.round(previsto))),
+    celula(`${delta >= 0 ? "+" : "−"}${pct1(ultimo ? delta / ultimo : 0)}`),
+    celula(`${previsto >= media ? "+" : "−"}${pct1(media ? (previsto - media) / media : 0)}`),
+  );
+  document.querySelector("#tabela-anual tbody").appendChild(tr);
+  const contraMedia = previsto >= media
+    ? `${pct1((previsto - media) / media)} acima da média`
+    : `${pct1((media - previsto) / media)} abaixo da média`;
+  analiseTexto.append(
+    paragrafo("", `${nomeEstado(sigla)}, ${nomeSerie}. Cada linha é um ano, de janeiro a dezembro. A média de ${numero.format(Math.round(media))} usa só os anos já observados.`),
+    paragrafo("Previsão", `Em 2026, o TFT soma ${numero.format(Math.round(previsto))}. Em relação a 2025, ${fraseMovimento(delta, ultimo)}. Esse nível fica ${contraMedia} dos anos desde 2015.`),
+    paragrafo("", "Esta leitura é só desta série. Ela não explica o total de internações."),
+  );
+  if (fator() !== 1) analiseTexto.append(paragrafo("", "A simulação fica de fora desta leitura e da tabela."));
+}
+
+function escreverDinheiro(sigla) {
+  const bloco = ans.valor.series[sigla];
+  const quantidade = ans.estados.find((item) => item.sigla === sigla);
+  const ticket = quebraAtual === "ticket";
+  const linhas = periodos(ans.valor.meses, bloco.valor, ticket);
+  const { media, ultimo } = escreverTabela(linhas, false);
+  const formatar = ticket
+    ? (valor) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : reais;
+  const intro = `${nomeEstado(sigla)}. ${TEXTO[quebraAtual]} ${ticket ? "No gráfico, cada mês é o valor pago dividido pelas internações daquele mês. Na tabela, o ticket do ano usa a soma dos doze meses." : "Os números estão em reais da época, sem correção pela inflação."} A média de ${formatar(media)} usa 2023, 2024 e 2025.`;
+  if (!bloco.valor_tft) {
+    analiseTexto.append(
+      paragrafo("", intro),
+      paragrafo("Histórico", `Em 2025 o total foi ${formatar(ultimo)}, ${ultimo >= media ? `${pct1((ultimo - media) / media)} acima` : `${pct1((media - ultimo) / media)} abaixo`} da média desses três anos.`),
+    );
+    return;
+  }
+  const n0 = soma(quantidade.observado.slice(-12));
+  const n1 = soma(quantidade.tft);
+  const v0 = soma(bloco.valor.slice(-12));
+  const v1 = soma(bloco.valor_tft);
+  const previsto = ticket ? v1 / Math.max(1, n1) : v1;
+  const delta = previsto - ultimo;
+  const tr = document.createElement("tr");
+  tr.className = "previsto";
+  tr.append(
+    celula("2026, previsão"),
+    celula(formatar(previsto)),
+    celula(`${delta >= 0 ? "+" : "−"}${pct1(ultimo ? delta / ultimo : 0)}`),
+    celula(`${previsto >= media ? "+" : "−"}${pct1(media ? (previsto - media) / media : 0)}`),
+  );
+  document.querySelector("#tabela-anual tbody").appendChild(tr);
+  const contraMedia = previsto >= media
+    ? `${pct1((previsto - media) / media)} acima da média`
+    : `${pct1((media - previsto) / media)} abaixo da média`;
+  analiseTexto.append(
+    paragrafo("", intro),
+    paragrafo("Previsão", `${ticket ? `Em 2026, o ticket médio do ano fica ${formatar(previsto)}` : `Em 2026, o TFT soma ${formatar(previsto)}`}. Em relação a 2025, ${delta >= 0 ? "sobe" : "cai"} ${formatar(Math.abs(delta))} (${delta >= 0 ? "+" : "−"}${pct1(ultimo ? delta / ultimo : 0)}). Esse nível fica ${contraMedia} de 2023 a 2025. A rede usa 12 meses de memória, porque o valor pago só existe desde 2023. O ticket previsto é o valor previsto dividido pela previsão de internações.`),
+  );
+  if (!ticket) {
+    const t0 = n0 ? v0 / n0 : 0;
+    const t1 = n1 ? v1 / n1 : 0;
+    const efeitoVolume = (n1 - n0) * t0;
+    const efeitoTicket = n0 * (t1 - t0);
+    const parte = (valor) => valor < 0 ? `reduz ${reais(Math.abs(valor))}` : `responde por ${reais(valor)}`;
+    analiseTexto.append(paragrafo(
+      "Quantidade e ticket",
+      `A variação do valor pago é ${reais(v1 - v0)}. A quantidade de internações ${parte(efeitoVolume)} e o ticket médio ${parte(efeitoTicket)}. O ticket passa de ${t0.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 })} para ${t1.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`,
+    ));
+  }
+  if (fator() !== 1) analiseTexto.append(paragrafo("", "A simulação fica de fora desta leitura e da tabela."));
+}
+
 function escreverAnalise() {
   analiseTexto.replaceChildren();
-  document.querySelector("#analise h2").textContent = dinheiro(quebraAtual) ? "Total do ano" : "Total do ano e a previsão";
   const sigla = estadoEl.value;
   const estado = ans.estados.find((item) => item.sigla === sigla);
+  const dinheiroSemPrevisao = dinheiro(quebraAtual) && !ans.valor.series[sigla].valor_tft;
+  document.querySelector("#analise h2").textContent = dinheiroSemPrevisao ? "Total do ano" : "Total do ano e a previsão";
   if (dinheiro(quebraAtual)) {
-    const linhas = periodos(ans.valor.meses, ans.valor.series[sigla].valor, quebraAtual === "ticket");
-    const { media, ultimo } = escreverTabela(linhas, false);
-    const formatar = quebraAtual === "ticket"
-      ? (valor) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 })
-      : reais;
-    analiseTexto.append(
-      paragrafo("", `${nomeEstado(sigla)}. ${TEXTO[quebraAtual]} A média de ${formatar(media)} usa 2023, 2024 e 2025.`),
-      paragrafo("Histórico", `Em 2025 o total foi ${formatar(ultimo)}, ${ultimo >= media ? `${pct1((ultimo - media) / media)} acima` : `${pct1((media - ultimo) / media)} abaixo`} da média desses três anos. O mesmo modelo da contagem não roda aqui: são só 36 meses.`),
-    );
+    escreverDinheiro(sigla);
+    return;
+  }
+  if (quebraAtual === "obito" || quebraAtual === "uti") {
+    escreverSerieCurta(sigla, ans.quebras[quebraAtual].series[sigla][grupoSelecionado()], grupoSelecionado());
     return;
   }
   const linhas = periodos(ans.meses, estado.observado, false);

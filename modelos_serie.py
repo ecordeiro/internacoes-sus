@@ -39,15 +39,15 @@ def calendario(indice: pd.DatetimeIndex) -> np.ndarray:
     return np.column_stack([np.sin(angulo), np.cos(angulo)]).astype(np.float32)
 
 
-def montar_janelas(escalado: pd.DataFrame, t_inicial: int, t_final: int):
+def montar_janelas(escalado: pd.DataFrame, t_inicial: int, t_final: int, janela: int = JANELA):
     cal = calendario(escalado.index)
     matriz = escalado.to_numpy(dtype=np.float32)
     passados, futuros, saidas, series = [], [], [], []
     for coluna, serie in enumerate(escalado.columns):
         valores = matriz[:, coluna]
         for t in range(t_inicial, t_final + 1):
-            quantidade = valores[t - JANELA : t][:, None]
-            passados.append(np.hstack([quantidade, cal[t - JANELA : t]]))
+            quantidade = valores[t - janela : t][:, None]
+            passados.append(np.hstack([quantidade, cal[t - janela : t]]))
             meses = np.arange(t, t + HORIZONTE)
             sazonal = valores[meses - 12][:, None]
             futuros.append(np.hstack([sazonal, cal[meses]]))
@@ -105,14 +105,14 @@ def estender(fechada: pd.DataFrame, inicio_futuro: str = "2026-08-01") -> tuple[
     return pd.concat([fechada, lugar]), futuro
 
 
-def prever_lstm(painel: pd.DataFrame, futuro: pd.DatetimeIndex, corte: str = CORTE) -> pd.DataFrame:
+def prever_lstm(painel: pd.DataFrame, futuro: pd.DatetimeIndex, corte: str = CORTE, janela: int = JANELA) -> pd.DataFrame:
     treino = painel.loc[:corte]
     escala = EscalaSerie(treino)
     escalado = escala.aplicar(painel)
     inicio = len(treino)
-    passado, futuro_x, y, _ = montar_janelas(escalado, JANELA, inicio - HORIZONTE)
+    passado, futuro_x, y, _ = montar_janelas(escalado, janela, inicio - HORIZONTE, janela)
     modelo = treinar_lstm(passado, futuro_x, y)
-    p_teste, f_teste, _, series = montar_janelas(escalado, inicio, inicio)
+    p_teste, f_teste, _, series = montar_janelas(escalado, inicio, inicio, janela)
     with torch.no_grad():
         previsto = modelo(p_teste, f_teste).numpy()
     quadro = pd.DataFrame(index=futuro, columns=list(painel.columns), dtype=float)
@@ -121,7 +121,7 @@ def prever_lstm(painel: pd.DataFrame, futuro: pd.DatetimeIndex, corte: str = COR
     return quadro
 
 
-def prever_tft(painel: pd.DataFrame, futuro: pd.DatetimeIndex, corte: str = CORTE) -> pd.DataFrame:
+def prever_tft(painel: pd.DataFrame, futuro: pd.DatetimeIndex, corte: str = CORTE, janela: int = JANELA) -> pd.DataFrame:
     longo = painel.copy()
     longo.columns.name = "serie"
     longo = longo.stack().rename("internacoes").reset_index()
@@ -139,8 +139,8 @@ def prever_tft(painel: pd.DataFrame, futuro: pd.DatetimeIndex, corte: str = CORT
         time_idx="time_idx",
         target="internacoes",
         group_ids=["serie"],
-        max_encoder_length=JANELA,
-        min_encoder_length=JANELA,
+        max_encoder_length=janela,
+        min_encoder_length=janela,
         max_prediction_length=HORIZONTE,
         min_prediction_length=HORIZONTE,
         time_varying_known_reals=["mes_sin", "mes_cos", "mesmo_mes_ano_anterior"],
@@ -190,13 +190,14 @@ def prever(
     nome: str,
     corte: str = CORTE,
     inicio_futuro: str = "2026-08-01",
+    janela: int = JANELA,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     torch.manual_seed(SEMENTE)
     np.random.seed(SEMENTE)
     painel, futuro = estender(painel_fechado, inicio_futuro)
-    print(f"{nome}: {painel_fechado.shape[1]} séries. Previsão {futuro.min():%Y-%m} a {futuro.max():%Y-%m}", flush=True)
-    lstm = prever_lstm(painel, futuro, corte)
-    tft = prever_tft(painel, futuro, corte)
+    print(f"{nome}: {painel_fechado.shape[1]} séries, memória de {janela} meses. Previsão {futuro.min():%Y-%m} a {futuro.max():%Y-%m}", flush=True)
+    lstm = prever_lstm(painel, futuro, corte, janela)
+    tft = prever_tft(painel, futuro, corte, janela)
     pasta.mkdir(exist_ok=True)
     lstm.to_parquet(pasta / f"previsao_{nome}_lstm.parquet")
     tft.to_parquet(pasta / f"previsao_{nome}_tft.parquet")
