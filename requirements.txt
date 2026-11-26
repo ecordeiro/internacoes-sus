@@ -1,0 +1,10 @@
+# Python 3.12. O 3.14 ainda nao tem wheel de fastparquet/pyreaddbc, dependencias do PySUS.
+pysus>=2.12.2
+pandas>=2.0
+pyarrow>=14.0
+ipykernel>=6.29
+nest_asyncio>=1.6
+matplotlib>=3.8
+torch>=2.2
+pytorch-forecasting>=1.2
+lightning>=2.2

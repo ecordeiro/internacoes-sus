@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Internações no SUS — previsão por estado</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <header class="topo">
+    <p class="olho">SIH/SUS · internações hospitalares</p>
+    <h1>Previsão por estado</h1>
+    <p class="resumo" id="resumo">Carregando a série…</p>
+  </header>
+
+  <section class="controles">
+    <label>
+      Estado
+      <select id="estado"></select>
+    </label>
+    <label>
+      Histórico a partir de
+      <select id="inicio">
+        <option value="2024-01">janeiro de 2024</option>
+        <option value="2022-01">janeiro de 2022</option>
+        <option value="2016-01">janeiro de 2016</option>
+        <option value="2008-07">julho de 2008</option>
+      </select>
+    </label>
+    <label class="cenario">
+      Simulação da previsão
+      <span id="cenario-valor">0%</span>
+      <input id="cenario" type="range" min="-20" max="20" step="1" value="0">
+    </label>
+  </section>
+
+  <section class="painel">
+    <div class="grafico-caixa">
+      <svg id="grafico" role="img" aria-labelledby="titulo-grafico"></svg>
+    </div>
+    <p id="titulo-grafico" class="legenda-texto"></p>
+    <div class="legenda" id="legenda"></div>
+  </section>
+
+  <section class="tabela-caixa">
+    <h2>Doze meses previstos</h2>
+    <div class="rolagem">
+      <table id="tabela">
+        <thead>
+          <tr>
+            <th>Mês</th>
+            <th>Mesmo mês do ano anterior</th>
+            <th>TFT</th>
+            <th>LSTM</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      Contagem de AIH normais pela data de internação, no estado do hospital.
+      A série usada no treino vai de julho de 2008 a julho de 2026.
+      Agosto e setembro de 2026 ficaram de fora porque a cobrança ainda está incompleta.
+      A previsão foi emitida com essa série e cobre agosto de 2026 a julho de 2027.
+    </p>
+    <p>
+      A simulação só multiplica a previsão exibida. Ela não treina o modelo de novo.
+      O teste em que o ano de 2025 ficou fora do treino continua registrado nos notebooks do estudo.
+    </p>
+  </footer>
+  <script src="pagina.js"></script>
+</body>
+</html>
