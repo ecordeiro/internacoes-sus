@@ -21,10 +21,13 @@ const TEXTO = {
   diagnostico: "Os quinze diagnósticos principais de maior volume em Minas Gerais. Os outros códigos estão em Demais diagnósticos.",
   obito: "Somente internações com óbito durante a internação.",
   uti: "Somente internações com pelo menos um dia de UTI.",
+  valor: "Valor aprovado da AIH, em reais da época.",
+  ticket: "Ticket médio: valor aprovado dividido pelo número de internações.",
 };
 
 let total = null;
 let quebrasDados = null;
+let custos = null;
 let quebraAtual = "total";
 
 function nomeMes(codigo) {
@@ -38,7 +41,25 @@ function fator() {
 
 function aplicar(valores) {
   const escala = fator();
-  return valores.map((valor) => Math.max(0, Math.round(valor * escala)));
+  const casas = quebraAtual === "ticket" ? 2 : 0;
+  const potencia = 10 ** casas;
+  return valores.map((valor) => Math.max(0, Math.round(valor * escala * potencia) / potencia));
+}
+
+function formatarNumero(valor) {
+  if (quebraAtual === "ticket") {
+    return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  if (quebraAtual === "valor") {
+    const absoluto = Math.abs(valor);
+    if (absoluto >= 1e9) return `${(valor / 1e9).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} bi`;
+    if (absoluto >= 1e6) return `${(valor / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mi`;
+  }
+  return numero.format(Math.round(valor));
+}
+
+function reais(valor) {
+  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 }
 
 function nomeEstado(sigla) {
@@ -47,6 +68,14 @@ function nomeEstado(sigla) {
 }
 
 function serieAtual() {
+  if (quebraAtual === "valor" || quebraAtual === "ticket") {
+    const rotulo = quebraAtual === "valor" ? "valor aprovado" : "ticket médio";
+    return {
+      fonte: custos,
+      nome: `${nomeEstado(estadoEl.value)}, ${rotulo}`,
+      valores: custos.series[quebraAtual][estadoEl.value],
+    };
+  }
   if (quebraAtual === "total") {
     return {
       fonte: total,
@@ -64,7 +93,7 @@ function serieAtual() {
 }
 
 function atualizarGrupo() {
-  const mostra = quebraAtual !== "total" && quebrasDados;
+  const mostra = !["total", "valor", "ticket"].includes(quebraAtual) && quebrasDados;
   caixaGrupo.hidden = !mostra || quebrasDados.quebras[quebraAtual].grupos.length < 2;
   if (!mostra) return;
   const grupos = quebrasDados.quebras[quebraAtual].grupos;
@@ -304,11 +333,122 @@ function celula(texto) {
   return coluna;
 }
 
+function periodosSomados(meses, valores) {
+  const inicio = meses.findIndex((mes) => mes.endsWith("-08"));
+  const periodos = [];
+  for (let indice = inicio; indice + 11 < meses.length; indice += 12) {
+    const [anoInicio] = meses[indice].split("-");
+    const [anoFim] = meses[indice + 11].split("-");
+    periodos.push({ rotulo: `${anoInicio}–${anoFim}`, total: soma(valores.slice(indice, indice + 12)) });
+  }
+  return periodos;
+}
+
+function periodosTicket(meses, valor, quantidade) {
+  const inicio = meses.findIndex((mes) => mes.endsWith("-08"));
+  const periodos = [];
+  for (let indice = inicio; indice + 11 < meses.length; indice += 12) {
+    const [anoInicio] = meses[indice].split("-");
+    const [anoFim] = meses[indice + 11].split("-");
+    const internacoes = soma(quantidade.slice(indice, indice + 12));
+    const aprovado = soma(valor.slice(indice, indice + 12));
+    periodos.push({ rotulo: `${anoInicio}–${anoFim}`, total: internacoes ? aprovado / internacoes : 0 });
+  }
+  return periodos;
+}
+
+function escreverCusto() {
+  if (!custos) {
+    analiseTexto.appendChild(paragrafo("", "A série de custo ainda não foi publicada.", "olho-analise"));
+    return;
+  }
+  const sigla = estadoEl.value;
+  const quantidade = total.estados.find((item) => item.sigla === sigla);
+  const valor = custos.series.valor[sigla];
+  const meses = custos.meses;
+  const corpoAnual = document.querySelector("#tabela-anual tbody");
+  const ticket = quebraAtual === "ticket";
+  const periodos = ticket
+    ? periodosTicket(meses, valor.observado, quantidade.observado)
+    : periodosSomados(meses, valor.observado);
+  const media = periodos.reduce((acumulado, periodo) => acumulado + periodo.total, 0) / periodos.length;
+  const ultimo = periodos[periodos.length - 1].total;
+  const previsto = ticket
+    ? soma(valor.tft) / Math.max(1, soma(quantidade.tft))
+    : soma(valor.tft);
+  const formatar = ticket
+    ? (item) => item.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : reais;
+  let anterior = null;
+  periodos.forEach((periodo) => {
+    const linha = document.createElement("tr");
+    const contraAnterior = anterior === null ? "—" : `${periodo.total >= anterior ? "+" : "−"}${pct1((periodo.total - anterior) / anterior)}`;
+    const contraMedia = `${periodo.total >= media ? "+" : "−"}${pct1((periodo.total - media) / media)}`;
+    linha.append(celula(periodo.rotulo), celula(formatar(periodo.total)), celula(contraAnterior), celula(contraMedia));
+    corpoAnual.appendChild(linha);
+    anterior = periodo.total;
+  });
+  const delta = previsto - ultimo;
+  const linhaPrevista = document.createElement("tr");
+  linhaPrevista.className = "previsto";
+  linhaPrevista.append(
+    celula("2026–2027, previsão"),
+    celula(formatar(previsto)),
+    celula(`${delta >= 0 ? "+" : "−"}${pct1(ultimo ? delta / ultimo : 0)}`),
+    celula(`${previsto >= media ? "+" : "−"}${pct1(media ? (previsto - media) / media : 0)}`),
+  );
+  corpoAnual.appendChild(linhaPrevista);
+
+  const n0 = soma(quantidade.observado.slice(-12));
+  const n1 = soma(quantidade.tft);
+  const v0 = soma(valor.observado.slice(-12));
+  const v1 = soma(valor.tft);
+  const t0 = n0 ? v0 / n0 : 0;
+  const t1 = n1 ? v1 / n1 : 0;
+  const efeitoVolume = (n1 - n0) * t0;
+  const efeitoTicket = n0 * (t1 - t0);
+  const efeitoCruzado = (n1 - n0) * (t1 - t0);
+  const contraMedia = previsto >= media
+    ? `${pct1((previsto - media) / media)} acima da média`
+    : `${pct1((media - previsto) / media)} abaixo da média`;
+  const tendencia = textoTendencia(periodos, previsto);
+  analiseTexto.appendChild(paragrafo(
+    "",
+    `${nomeEstado(sigla)}. ${ticket ? "No gráfico, cada mês é o valor aprovado dividido pelas internações daquele mês. Na tabela, o ticket do período usa a soma dos doze meses." : "Valor aprovado da AIH."} Os números estão em reais da época, sem correção pela inflação. A média de ${formatar(media)} usa só os períodos já observados.`,
+    "olho-analise",
+  ));
+  analiseTexto.appendChild(paragrafo(
+    "Previsão",
+    `${ticket
+      ? `De agosto de 2026 a julho de 2027, o ticket médio do período fica ${formatar(previsto)}`
+      : `De agosto de 2026 a julho de 2027, o TFT soma ${formatar(previsto)}`}. Em relação a agosto de 2025 a julho de 2026, ${fraseMovimento(delta, ultimo, ticket ? " reais" : " no valor aprovado")}. Esse nível fica ${contraMedia} dos períodos desde 2008–2009. ${tendencia}`.replace(/\s+/g, " ").trim(),
+  ));
+  let conta = `A quantidade de internações responde por ${reais(efeitoVolume)} e o ticket médio por ${reais(efeitoTicket)}.`;
+  if (Math.abs(efeitoCruzado) >= Math.max(Math.abs(v1 - v0) * 0.1, 1)) {
+    conta += ` O efeito dos dois juntos é ${reais(efeitoCruzado)}.`;
+  }
+  analiseTexto.appendChild(paragrafo(
+    "Quantidade e ticket",
+    `A variação do valor aprovado no período é ${reais(v1 - v0)}. ${conta} O ticket passa de ${t0.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 })} para ${t1.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`,
+  ));
+  if (fator() !== 1) {
+    const sinal = `${fator() > 1 ? "+" : ""}${Math.round((fator() - 1) * 100)}%`;
+    analiseTexto.appendChild(paragrafo("", `A simulação de ${sinal} fica de fora desta leitura e da tabela.`, "olho-analise"));
+  }
+}
+
 function escreverAnalise() {
   const corpoAnual = document.querySelector("#tabela-anual tbody");
+  const tituloColuna = document.querySelector("#tabela-anual thead th:nth-child(2)");
   analiseTexto.replaceChildren();
   if (corpoAnual) corpoAnual.replaceChildren();
   if (!total) return;
+  if (quebraAtual === "valor" || quebraAtual === "ticket") {
+    if (tituloColuna) tituloColuna.textContent = quebraAtual === "valor" ? "Valor aprovado" : "Ticket médio";
+    escreverCusto();
+    return;
+  }
+  if (tituloColuna) tituloColuna.textContent = "Internações";
   if (!quebrasDados) {
     analiseTexto.appendChild(paragrafo("", "A leitura entra quando a tabela termina de carregar.", "olho-analise"));
     return;
@@ -383,8 +523,12 @@ function escreverAnalise() {
 
 function desenhar() {
   if (!total) return;
-  if (quebraAtual !== "total" && !quebrasDados) {
+  if (quebraAtual !== "total" && quebraAtual !== "valor" && quebraAtual !== "ticket" && !quebrasDados) {
     resumo.textContent = "A série desta aba ainda não foi publicada.";
+    return;
+  }
+  if ((quebraAtual === "valor" || quebraAtual === "ticket") && !custos) {
+    resumo.textContent = "A série de custo ainda não foi publicada.";
     return;
   }
   const atual = serieAtual();
@@ -401,7 +545,7 @@ function desenhar() {
 
   const largura = 1000;
   const altura = 480;
-  const margem = { topo: 16, direita: 16, baixo: 78, esquerda: 72 };
+  const margem = { topo: 16, direita: 16, baixo: 78, esquerda: quebraAtual === "valor" || quebraAtual === "ticket" ? 96 : 72 };
   const internoL = largura - margem.esquerda - margem.direita;
   const internoA = altura - margem.topo - margem.baixo;
   const pontos = observado.concat(tft, lstm, anterior);
@@ -424,7 +568,7 @@ function desenhar() {
     const valor = y0 + ((y1 - y0) * i) / 4;
     const y = yDe(valor);
     grade += `<line x1="${margem.esquerda}" x2="${largura - margem.direita}" y1="${y}" y2="${y}" stroke="#efe8dc"></line>`;
-    grade += `<text x="${margem.esquerda - 8}" y="${y + 4}" text-anchor="end" fill="#57534e" font-size="12">${numero.format(Math.round(valor))}</text>`;
+    grade += `<text x="${margem.esquerda - 8}" y="${y + 4}" text-anchor="end" fill="#57534e" font-size="12">${formatarNumero(valor)}</text>`;
   }
 
   const passo = meses.length > 60 ? 6 : meses.length > 36 ? 2 : 1;
@@ -461,9 +605,9 @@ function desenhar() {
   corpo.innerHTML = fonte.horizonte.map((mes, i) => `
     <tr>
       <td>${nomeMes(mes)}</td>
-      <td>${numero.format(anterior[i])}</td>
-      <td>${numero.format(tft[i])}</td>
-      <td>${numero.format(lstm[i])}</td>
+      <td>${formatarNumero(anterior[i])}</td>
+      <td>${formatarNumero(tft[i])}</td>
+      <td>${formatarNumero(lstm[i])}</td>
     </tr>
   `).join("");
   escreverAnalise();
@@ -486,6 +630,12 @@ fetch("dados/previsao.json")
   .then((dados) => {
     quebrasDados = dados;
     atualizarGrupo();
+    desenhar();
+    return fetch("dados/custos.json");
+  })
+  .then((resposta) => (resposta && resposta.ok ? resposta.json() : null))
+  .then((dados) => {
+    custos = dados;
     desenhar();
   })
   .catch(() => {
