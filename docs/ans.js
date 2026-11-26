@@ -139,7 +139,7 @@ function desenhar() {
   const anterior = valores.ano_anterior;
   const largura = 1000;
   const altura = 480;
-  const margem = { topo: 16, direita: 16, baixo: 78, esquerda: dinheiro(quebraAtual) ? 96 : 72 };
+  const margem = { topo: 16, direita: 16, baixo: 52, esquerda: dinheiro(quebraAtual) ? 96 : 72 };
   const internoL = largura - margem.esquerda - margem.direita;
   const internoA = altura - margem.topo - margem.baixo;
   const pontos = observado.concat(tft || [], lstm || [], anterior || []);
@@ -158,11 +158,14 @@ function desenhar() {
     grade += `<line x1="${margem.esquerda}" x2="${largura - margem.direita}" y1="${y}" y2="${y}" stroke="#efe8dc"></line>`;
     grade += `<text x="${margem.esquerda - 8}" y="${y + 4}" text-anchor="end" fill="#57534e" font-size="12">${formatarNumero(valor)}</text>`;
   }
-  const passo = meses.length > 60 ? 6 : meses.length > 36 ? 2 : 1;
+  const porAno = meses.length > 36;
   let datas = "";
   meses.forEach((mes, i) => {
-    if (i % passo !== 0) return;
-    datas += `<text x="0" y="0" fill="#57534e" font-size="11" transform="translate(${xDe(i).toFixed(1)} ${margem.topo + internoA + 8}) rotate(90)">${mes}</text>`;
+    const [ano, numeroMes] = mes.split("-");
+    const rotulo = porAno ? (numeroMes === "01" ? ano : "") : `${numeroMes}/${ano.slice(2)}`;
+    if (!rotulo) return;
+    if (!porAno && meses.length > 18 && i % 2 !== 0) return;
+    datas += `<text x="${xDe(i).toFixed(1)}" y="${margem.topo + internoA + 18}" text-anchor="middle" fill="#57534e" font-size="12">${rotulo}</text>`;
   });
   const linha = (serie, deslocamento, cor, extra) => {
     const d = serie.map((valor, i) => `${i === 0 ? "M" : "L"} ${xDe(i + deslocamento).toFixed(1)} ${yDe(valor).toFixed(1)}`).join(" ");
@@ -185,9 +188,13 @@ function desenhar() {
   const sinal = escala === 1 ? "0%" : `${escala > 1 ? "+" : ""}${Math.round((escala - 1) * 100)}%`;
   cenarioValor.textContent = sinal;
   const simulacao = previsto && escala !== 1 ? `, com simulação de ${sinal}` : "";
+  const janela = `De ${nomeMes(meses[0])} a ${nomeMes(meses[meses.length - 1])}.`;
+  const antesDaSerie = atual.meses[0] > corte
+    ? ` O pedido era ${nomeMes(corte)}, mas esta série só começa em ${nomeMes(atual.meses[0])}.`
+    : "";
   titulo.textContent = previsto
-    ? `${atual.nome}: o azul é o observado até dezembro de 2025. A faixa à direita é a previsão de 2026${simulacao}.`
-    : `${atual.nome}: série observada, de janeiro de 2023 a dezembro de 2025.`;
+    ? `${atual.nome}. ${janela} O azul vai até dezembro de 2025 e a faixa à direita é a previsão de 2026${simulacao}.`
+    : `${atual.nome}. ${janela}${antesDaSerie}`;
   resumo.textContent = `${TEXTO[quebraAtual]} ${previsto ? "Previsão de janeiro a dezembro de 2026." : "Sem previsão: o histórico de valor pago tem três anos."}`;
   const itens = [["", "observado"]];
   if (previsto) {
