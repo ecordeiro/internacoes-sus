@@ -64,7 +64,7 @@ ORDEM = {
         "Autogestão",
         "Demais",
     ],
-    "porte": ["Grande", "Média", "Pequena", "Sem beneficiários"],
+    "porte": ["Grande", "Média", "Pequena"],
 }
 MODALIDADE = {
     "22": "Cooperativa médica",
@@ -185,7 +185,7 @@ def agregar_operadora(caminho: Path) -> pd.DataFrame:
         valor = pd.Series(pd.NA, index=base.index, dtype="Float64")
     codigo = pd.to_numeric(base["CD_MODALIDADE"], errors="coerce").astype("Int64").astype(str).replace("<NA>", pd.NA)
     modalidade = codigo.map(MODALIDADE).fillna("Demais")
-    porte = base["PORTE"].astype(str).str.strip().str.upper().map(PORTE).fillna("Sem beneficiários")
+    porte = base["PORTE"].astype(str).str.strip().str.upper().map(PORTE)
     partes = [
         _resumir(uf, mes, valor, modalidade, "modalidade"),
         _resumir(uf, mes, valor, porte, "porte"),

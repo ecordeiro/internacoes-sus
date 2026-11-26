@@ -8,7 +8,8 @@
 </head>
 <body>
   <nav class="fontes">
-    <a href="index.html">SUS</a>
+    <a href="index.html">Início</a>
+    <a href="sus.html">SUS</a>
     <a href="ans.html">ANS</a>
     <a href="comparar.html" class="ativa">Comparar</a>
   </nav>
@@ -23,7 +24,7 @@
       Estado
       <select id="estado"></select>
     </label>
-    <label>
+    <label id="caixa-inicio">
       Histórico a partir de
       <select id="inicio">
         <option value="2022-01">janeiro de 2022</option>
@@ -37,6 +38,7 @@
         <option value="quantidade">internações</option>
         <option value="indice">formato da curva: a média de 2015 vale 100</option>
         <option value="ticket">ticket médio</option>
+        <option value="cid">ticket médio por CID</option>
       </select>
     </label>
   </section>
@@ -76,8 +78,9 @@
       O ticket médio é o valor do mês dividido pelas internações do mês, em reais da época, sem correção pela inflação.
       No SUS, o valor é o aprovado da AIH. Na ANS, é o valor pago no evento, e ele só existe a partir de 2023.
       No SUS, o mês é a data de internação. Na ANS, o mês é o do evento.
+      O ticket por CID usa janeiro de 2023 a dezembro de 2025 e só os códigos que existem nos dois sistemas, no mesmo estado.
     </p>
   </footer>
-  <script src="comparar.js?v=4"></script>
+  <script src="comparar.js?v=5"></script>
 </body>
 </html>

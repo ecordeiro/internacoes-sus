@@ -36,6 +36,27 @@ h2 { margin: 0 0 12px; font-size: 20px; }
 }
 
 .resumo { margin: 0; max-width: 68ch; color: var(--mudo); }
+.capa-autor { margin: 10px 0 0; font-size: 18px; }
+
+.cartoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.cartoes a {
+  display: block;
+  padding: 18px;
+  border: 1px solid var(--linha);
+  border-radius: 16px;
+  background: var(--papel);
+  color: inherit;
+  text-decoration: none;
+}
+
+.cartoes strong { display: block; margin-bottom: 6px; font-size: 18px; }
+.cartoes span { color: var(--mudo); }
 
 .fontes {
   display: flex;

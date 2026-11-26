@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Internações no SUS — previsão por estado</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <nav class="fontes">
+    <a href="index.html">Início</a>
+    <a href="sus.html" class="ativa">SUS</a>
+    <a href="ans.html">ANS</a>
+    <a href="comparar.html">Comparar</a>
+  </nav>
+  <header class="topo">
+    <p class="olho">SIH/SUS · internações hospitalares</p>
+    <h1>Previsão por estado</h1>
+    <p class="resumo" id="resumo">Carregando a série…</p>
+  </header>
+
+  <nav class="abas" id="abas">
+    <button type="button" data-quebra="total" class="ativa">Total</button>
+    <button type="button" data-quebra="sexo">Sexo</button>
+    <button type="button" data-quebra="carater">Caráter</button>
+    <button type="button" data-quebra="diagnostico">Diagnóstico</button>
+    <button type="button" data-quebra="obito">Óbito</button>
+    <button type="button" data-quebra="uti">UTI</button>
+    <button type="button" data-quebra="valor">Valor</button>
+    <button type="button" data-quebra="ticket">Ticket médio</button>
+  </nav>
+
+  <section class="controles">
+    <label>
+      Estado
+      <select id="estado"></select>
+    </label>
+    <label id="caixa-grupo" hidden>
+      Grupo
+      <select id="grupo"></select>
+    </label>
+    <label>
+      Histórico a partir de
+      <select id="inicio">
+        <option value="2024-01">janeiro de 2024</option>
+        <option value="2022-01">janeiro de 2022</option>
+        <option value="2016-01">janeiro de 2016</option>
+        <option value="2008-07">julho de 2008</option>
+      </select>
+    </label>
+    <label class="cenario">
+      Simulação da previsão
+      <span id="cenario-valor">0%</span>
+      <input id="cenario" type="range" min="-20" max="20" step="1" value="0">
+    </label>
+  </section>
+
+  <section class="painel">
+    <div class="grafico-caixa">
+      <svg id="grafico" role="img" aria-labelledby="titulo-grafico"></svg>
+    </div>
+    <p id="titulo-grafico" class="legenda-texto"></p>
+    <div class="legenda" id="legenda"></div>
+  </section>
+
+  <section class="analise" id="analise">
+    <h2>Total do período e a previsão</h2>
+    <div class="rolagem">
+      <table id="tabela-anual">
+        <thead>
+          <tr>
+            <th>Agosto a julho</th>
+            <th>Internações</th>
+            <th>Contra o anterior</th>
+            <th>Contra a média</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="analise-texto">
+      <p class="olho-analise">Carregando a leitura…</p>
+    </div>
+  </section>
+
+  <section class="tabela-caixa">
+    <h2>Doze meses previstos</h2>
+    <div class="rolagem">
+      <table id="tabela">
+        <thead>
+          <tr>
+            <th>Mês</th>
+            <th>Mesmo mês do ano anterior</th>
+            <th>TFT</th>
+            <th>LSTM</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      Contagem de AIH normais pela data de internação, no estado do hospital.
+      A série usada no treino vai de julho de 2008 a julho de 2026.
+      Agosto e setembro de 2026 ficaram de fora porque a cobrança ainda está incompleta.
+      A previsão foi emitida com essa série e cobre agosto de 2026 a julho de 2027.
+      As abas separam sexo, caráter da internação, os quinze diagnósticos principais mais frequentes em Minas Gerais e o restante, óbito na internação, passagem por UTI, o valor aprovado da AIH e o ticket médio.
+      O valor está em reais da época, sem correção pela inflação.
+    </p>
+    <p>
+      A simulação só multiplica a previsão exibida. Ela não treina o modelo de novo e não entra na leitura do que move o total.
+      O valor é o aprovado na AIH, em reais da época. Não é o custo do hospital nem o que o paciente pagou.
+      O teste em que o ano de 2025 ficou fora do treino continua registrado nos notebooks do estudo.
+    </p>
+  </footer>
+  <script src="pagina.js"></script>
+</body>
+</html>

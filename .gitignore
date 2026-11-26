@@ -4,3 +4,5 @@ __pycache__/
 .ipynb_checkpoints/
 dados/ans/zip/
 dados/ans/parquet/
+dados/cid_sus.parquet
+dados/cid_ans.parquet
