@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SUS e ANS — internações por estado</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <nav class="fontes">
+    <a href="index.html">SUS</a>
+    <a href="ans.html">ANS</a>
+    <a href="comparar.html" class="ativa">Comparar</a>
+  </nav>
+  <header class="topo">
+    <p class="olho">SUS e ANS no mesmo estado</p>
+    <h1>Internações ao longo do tempo</h1>
+    <p class="resumo" id="resumo">Carregando as duas séries…</p>
+  </header>
+
+  <section class="controles">
+    <label>
+      Estado
+      <select id="estado"></select>
+    </label>
+    <label>
+      Histórico a partir de
+      <select id="inicio">
+        <option value="2022-01">janeiro de 2022</option>
+        <option value="2019-01">janeiro de 2019</option>
+        <option value="2015-01" selected>janeiro de 2015</option>
+      </select>
+    </label>
+    <label>
+      Mostrar
+      <select id="modo">
+        <option value="quantidade">internações</option>
+        <option value="indice">índice, 2015 = 100</option>
+      </select>
+    </label>
+  </section>
+
+  <section class="painel">
+    <div class="grafico-caixa">
+      <svg id="grafico" role="img" aria-labelledby="titulo-grafico"></svg>
+    </div>
+    <p id="titulo-grafico" class="legenda-texto"></p>
+    <div class="legenda" id="legenda"></div>
+  </section>
+
+  <section class="analise">
+    <h2>Total do ano</h2>
+    <div class="rolagem">
+      <table id="tabela-anual">
+        <thead>
+          <tr>
+            <th>Ano</th>
+            <th>SUS</th>
+            <th>ANS</th>
+            <th>ANS / SUS</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      As duas linhas são contagens de internações no estado do hospital.
+      No SUS, o mês é a data de internação. Na ANS, o mês é o do evento.
+      O SUS atende a população usuária do sistema público. A ANS registra a internação de plano de saúde.
+      O índice usa a média mensal de 2015 de cada série como 100, para comparar o formato da curva.
+      A janela comum vai de janeiro de 2015 a dezembro de 2025.
+    </p>
+  </footer>
+  <script src="comparar.js"></script>
+</body>
+</html>

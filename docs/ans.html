@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Internações na ANS — previsão por estado</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <nav class="fontes">
+    <a href="index.html">SUS</a>
+    <a href="ans.html" class="ativa">ANS</a>
+    <a href="comparar.html">Comparar</a>
+  </nav>
+  <header class="topo">
+    <p class="olho">TISS/ANS · internações de plano de saúde</p>
+    <h1>Previsão por estado</h1>
+    <p class="resumo" id="resumo">Carregando a série…</p>
+  </header>
+
+  <nav class="abas" id="abas">
+    <button type="button" data-quebra="total" class="ativa">Total</button>
+    <button type="button" data-quebra="sexo">Sexo</button>
+    <button type="button" data-quebra="carater">Caráter</button>
+    <button type="button" data-quebra="diagnostico">Diagnóstico</button>
+    <button type="button" data-quebra="obito">Óbito</button>
+    <button type="button" data-quebra="uti">UTI</button>
+    <button type="button" data-quebra="valor">Valor</button>
+    <button type="button" data-quebra="ticket">Ticket médio</button>
+  </nav>
+
+  <section class="controles">
+    <label>
+      Estado
+      <select id="estado"></select>
+    </label>
+    <label id="caixa-grupo" hidden>
+      Grupo
+      <select id="grupo"></select>
+    </label>
+    <label>
+      Histórico a partir de
+      <select id="inicio">
+        <option value="2024-01">janeiro de 2024</option>
+        <option value="2022-01">janeiro de 2022</option>
+        <option value="2019-01">janeiro de 2019</option>
+        <option value="2015-01">janeiro de 2015</option>
+      </select>
+    </label>
+    <label class="cenario" id="caixa-cenario">
+      Simulação da previsão
+      <span id="cenario-valor">0%</span>
+      <input id="cenario" type="range" min="-20" max="20" step="1" value="0">
+    </label>
+  </section>
+
+  <section class="painel">
+    <div class="grafico-caixa">
+      <svg id="grafico" role="img" aria-labelledby="titulo-grafico"></svg>
+    </div>
+    <p id="titulo-grafico" class="legenda-texto"></p>
+    <div class="legenda" id="legenda"></div>
+  </section>
+
+  <section class="analise" id="analise">
+    <h2>Total do ano e a previsão</h2>
+    <div class="rolagem">
+      <table id="tabela-anual">
+        <thead>
+          <tr>
+            <th>Ano</th>
+            <th>Internações</th>
+            <th>Contra o anterior</th>
+            <th>Contra a média</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="analise-texto"></div>
+  </section>
+
+  <section class="tabela-caixa" id="caixa-meses">
+    <h2>Doze meses previstos</h2>
+    <div class="rolagem">
+      <table id="tabela">
+        <thead>
+          <tr>
+            <th>Mês</th>
+            <th>Mesmo mês do ano anterior</th>
+            <th>TFT</th>
+            <th>LSTM</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      Cada linha do arquivo consolidado da ANS é uma internação de plano de saúde.
+      O mês é o do evento e o estado é o do hospital.
+      A série vai de janeiro de 2015 a dezembro de 2025. A previsão cobre 2026.
+      Os quinze diagnósticos são os mais frequentes em Minas Gerais nessa base; o restante fica em Demais diagnósticos, e a internação sem CID fica à parte.
+      Óbito é o motivo de saída 41, 42 ou 43. UTI é a internação com ao menos uma diária de UTI.
+    </p>
+    <p>
+      O valor é o pago no evento, em reais da época, e só existe a partir de 2023.
+      Esses três anos não alimentam o mesmo modelo da contagem, então valor e ticket ficam no histórico.
+      A simulação só multiplica a previsão exibida. Ela não treina o modelo de novo e não entra na leitura.
+    </p>
+  </footer>
+  <script src="ans.js"></script>
+</body>
+</html>

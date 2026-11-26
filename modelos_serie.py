@@ -98,15 +98,15 @@ def treinar_lstm(passado, futuro, y, epocas=80, lote=128):
     return modelo
 
 
-def estender(fechada: pd.DataFrame) -> tuple[pd.DataFrame, pd.DatetimeIndex]:
-    futuro = pd.date_range("2026-08-01", periods=HORIZONTE, freq="MS")
+def estender(fechada: pd.DataFrame, inicio_futuro: str = "2026-08-01") -> tuple[pd.DataFrame, pd.DatetimeIndex]:
+    futuro = pd.date_range(inicio_futuro, periods=HORIZONTE, freq="MS")
     lugar = fechada.iloc[-HORIZONTE:].copy()
     lugar.index = futuro
     return pd.concat([fechada, lugar]), futuro
 
 
-def prever_lstm(painel: pd.DataFrame, futuro: pd.DatetimeIndex) -> pd.DataFrame:
-    treino = painel.loc[:CORTE]
+def prever_lstm(painel: pd.DataFrame, futuro: pd.DatetimeIndex, corte: str = CORTE) -> pd.DataFrame:
+    treino = painel.loc[:corte]
     escala = EscalaSerie(treino)
     escalado = escala.aplicar(painel)
     inicio = len(treino)
@@ -121,7 +121,7 @@ def prever_lstm(painel: pd.DataFrame, futuro: pd.DatetimeIndex) -> pd.DataFrame:
     return quadro
 
 
-def prever_tft(painel: pd.DataFrame, futuro: pd.DatetimeIndex) -> pd.DataFrame:
+def prever_tft(painel: pd.DataFrame, futuro: pd.DatetimeIndex, corte: str = CORTE) -> pd.DataFrame:
     longo = painel.copy()
     longo.columns.name = "serie"
     longo = longo.stack().rename("internacoes").reset_index()
@@ -133,9 +133,9 @@ def prever_tft(painel: pd.DataFrame, futuro: pd.DatetimeIndex) -> pd.DataFrame:
     angulo = 2 * np.pi * longo["mes"].dt.month / 12
     longo["mes_sin"] = np.sin(angulo)
     longo["mes_cos"] = np.cos(angulo)
-    corte = int(longo.loc[longo["mes"] == CORTE, "time_idx"].iloc[0])
+    corte_idx = int(longo.loc[longo["mes"] == corte, "time_idx"].iloc[0])
     treino = TimeSeriesDataSet(
-        longo[longo.time_idx <= corte],
+        longo[longo.time_idx <= corte_idx],
         time_idx="time_idx",
         target="internacoes",
         group_ids=["serie"],
@@ -184,13 +184,19 @@ def prever_tft(painel: pd.DataFrame, futuro: pd.DatetimeIndex) -> pd.DataFrame:
     return quadro
 
 
-def prever(painel_fechado: pd.DataFrame, pasta: Path, nome: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def prever(
+    painel_fechado: pd.DataFrame,
+    pasta: Path,
+    nome: str,
+    corte: str = CORTE,
+    inicio_futuro: str = "2026-08-01",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     torch.manual_seed(SEMENTE)
     np.random.seed(SEMENTE)
-    painel, futuro = estender(painel_fechado)
+    painel, futuro = estender(painel_fechado, inicio_futuro)
     print(f"{nome}: {painel_fechado.shape[1]} séries. Previsão {futuro.min():%Y-%m} a {futuro.max():%Y-%m}", flush=True)
-    lstm = prever_lstm(painel, futuro)
-    tft = prever_tft(painel, futuro)
+    lstm = prever_lstm(painel, futuro, corte)
+    tft = prever_tft(painel, futuro, corte)
     pasta.mkdir(exist_ok=True)
     lstm.to_parquet(pasta / f"previsao_{nome}_lstm.parquet")
     tft.to_parquet(pasta / f"previsao_{nome}_tft.parquet")
