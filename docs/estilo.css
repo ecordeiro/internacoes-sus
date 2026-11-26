@@ -122,6 +122,11 @@ select {
 
 .legenda-texto { margin: 10px 0 0; color: var(--mudo); font-size: 14px; }
 
+.analise p { margin: 0 0 12px; max-width: 78ch; }
+.analise p:last-child { margin-bottom: 0; }
+.analise .olho-analise { color: var(--mudo); }
+.analise strong { font-weight: 650; }
+
 .rolagem { overflow-x: auto; }
 
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
