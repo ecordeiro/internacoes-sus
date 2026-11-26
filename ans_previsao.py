@@ -18,6 +18,7 @@ from modelos_serie import prever
 
 ORIGEM = Path("dados/ans/parquet/cons")
 QUEBRAS = Path("dados/ans/quebras.parquet")
+OPERADORA = Path("dados/ans/operadora.parquet")
 MODELOS = Path("dados/ans/modelos")
 SAIDA = Path("docs/dados/ans.json")
 SUS = Path("docs/dados/previsao.json")
@@ -56,6 +57,29 @@ ORDEM = {
     "diagnostico": [NOME[codigo] for codigo in CODIGOS] + [DEMAIS, SEM],
     "obito": ["Óbito"],
     "uti": ["Com UTI"],
+    "modalidade": [
+        "Cooperativa médica",
+        "Medicina de grupo",
+        "Seguradora",
+        "Autogestão",
+        "Demais",
+    ],
+    "porte": ["Grande", "Média", "Pequena", "Sem beneficiários"],
+}
+MODALIDADE = {
+    "22": "Cooperativa médica",
+    "24": "Autogestão",
+    "25": "Medicina de grupo",
+    "28": "Seguradora",
+    "29": "Seguradora",
+}
+PORTE = {
+    "GRANDE": "Grande",
+    "MÉDIO": "Média",
+    "MEDIO": "Média",
+    "PEQUENO": "Pequena",
+    "SEM BENEFICIÁRIOS": "Sem beneficiários",
+    "SEM BENEFICIARIOS": "Sem beneficiários",
 }
 VAZIO = {"", "NAN", "NONE", "NAT", "-2", "<NA>"}
 
@@ -147,6 +171,52 @@ def montar(reusar: bool = True) -> pd.DataFrame:
     return longo
 
 
+def agregar_operadora(caminho: Path) -> pd.DataFrame:
+    uf = caminho.stem.split("_")[0]
+    nomes = set(pq.read_schema(caminho).names)
+    colunas = [nome for nome in ("ANO_MES_EVENTO", "CD_MODALIDADE", "PORTE", "VL_EVENTO_PAGO") if nome in nomes]
+    base = pd.read_parquet(caminho, columns=colunas)
+    texto = base["ANO_MES_EVENTO"].astype(str).str.strip()
+    texto = texto.where(texto.str.contains("-", regex=False), texto.str.slice(0, 4) + "-" + texto.str.slice(4, 6))
+    mes = pd.to_datetime(texto.str.slice(0, 7), format="%Y-%m", errors="coerce")
+    if "VL_EVENTO_PAGO" in base.columns:
+        valor = pd.to_numeric(base["VL_EVENTO_PAGO"].astype(str).str.replace(",", ".", regex=False), errors="coerce")
+    else:
+        valor = pd.Series(pd.NA, index=base.index, dtype="Float64")
+    codigo = pd.to_numeric(base["CD_MODALIDADE"], errors="coerce").astype("Int64").astype(str).replace("<NA>", pd.NA)
+    modalidade = codigo.map(MODALIDADE).fillna("Demais")
+    porte = base["PORTE"].astype(str).str.strip().str.upper().map(PORTE).fillna("Sem beneficiários")
+    partes = [
+        _resumir(uf, mes, valor, modalidade, "modalidade"),
+        _resumir(uf, mes, valor, porte, "porte"),
+    ]
+    return pd.concat([parte for parte in partes if parte is not None], ignore_index=True)
+
+
+def montar_operadora(reusar: bool = True) -> pd.DataFrame:
+    if reusar and OPERADORA.exists():
+        pronto = pd.read_parquet(OPERADORA)
+        pronto["mes"] = pd.to_datetime(pronto["mes"])
+        return pronto
+    arquivos = sorted(ORIGEM.glob("*_*.parquet"))
+    if not arquivos:
+        raise FileNotFoundError(f"Nenhum consolidado em {ORIGEM}")
+    partes = []
+    for i, caminho in enumerate(arquivos, start=1):
+        partes.append(agregar_operadora(caminho))
+        if i % 300 == 0 or i == len(arquivos):
+            print(f"operadora {i}/{len(arquivos)} arquivos", flush=True)
+    longo = pd.concat(partes, ignore_index=True)
+    chave = ["uf", "quebra", "grupo", "mes"]
+    contagem = longo.groupby(chave, as_index=False)["internacoes"].sum()
+    pago = longo.groupby(chave, as_index=False)["valor"].sum(min_count=1)
+    longo = contagem.merge(pago, on=chave)
+    longo = longo.loc[longo["mes"].between(INICIO, FIM)].copy()
+    OPERADORA.parent.mkdir(parents=True, exist_ok=True)
+    longo.to_parquet(OPERADORA, index=False)
+    return longo
+
+
 def painel(longo: pd.DataFrame, quebra: str, grupos: list[str] | None = None) -> pd.DataFrame:
     fatia = longo.loc[longo["quebra"].eq(quebra)]
     if grupos is None:
@@ -179,6 +249,16 @@ def painel_valor(longo: pd.DataFrame) -> pd.DataFrame:
     return largo.reindex(index=meses, columns=list(UFS)).astype(float)
 
 
+def painel_valor_grupo(longo: pd.DataFrame, quebra: str, grupos: list[str]) -> pd.DataFrame:
+    fatia = longo.loc[longo["quebra"].eq(quebra) & longo["mes"].between(INICIO_VALOR, FIM)]
+    largo = fatia.pivot_table(index="mes", columns=["uf", "grupo"], values="valor", aggfunc="sum")
+    colunas = [(uf, grupo) for uf in UFS for grupo in grupos]
+    largo = largo.reindex(columns=pd.MultiIndex.from_tuples(colunas, names=["uf", "grupo"]))
+    largo.columns = [f"{uf}|{grupo}" for uf, grupo in largo.columns]
+    meses = pd.date_range(INICIO_VALOR, FIM, freq="MS")
+    return largo.reindex(index=meses).fillna(0).astype(float)
+
+
 def inteiros(valores) -> list[int]:
     return [int(round(max(float(valor), 0))) for valor in valores]
 
@@ -206,9 +286,17 @@ def gravar(longo: pd.DataFrame, modelos: dict[str, tuple[pd.DataFrame, pd.DataFr
         quadro = painel(longo, quebra, grupos)
         tft, lstm = modelos[quebra]
         series = {uf: {} for uf in UFS}
+        valor_grupo = modelos.get(f"{quebra}_valor")
+        valores = painel_valor_grupo(longo, quebra, grupos) if valor_grupo else None
         for coluna in quadro.columns:
             uf, grupo = coluna.split("|", 1)
             series[uf][grupo] = pacote(quadro[coluna], tft[coluna], lstm[coluna])
+            if valor_grupo is None:
+                continue
+            pago = valores[coluna]
+            series[uf][grupo]["valor"] = [int(round(item)) for item in pago]
+            series[uf][grupo]["valor_tft"] = inteiros(valor_grupo[0][coluna])
+            series[uf][grupo]["valor_lstm"] = inteiros(valor_grupo[1][coluna])
         quebras[quebra] = {"grupos": grupos, "series": series}
     valor_meses = pd.date_range(INICIO_VALOR, FIM, freq="MS")
     valor = {}
@@ -248,11 +336,13 @@ def gravar(longo: pd.DataFrame, modelos: dict[str, tuple[pd.DataFrame, pd.DataFr
 
 
 def main() -> None:
-    longo = montar(reusar=True)
+    longo = pd.concat([montar(reusar=True), montar_operadora(reusar=True)], ignore_index=True)
     print(longo.groupby("quebra")["internacoes"].sum().to_string(), flush=True)
     modelos = {"total": treinar(painel(longo, "total"), "ans_total")}
     for quebra, grupos in ORDEM.items():
         modelos[quebra] = treinar(painel(longo, quebra, grupos), f"ans_{quebra}")
+        if quebra in {"modalidade", "porte"}:
+            modelos[f"{quebra}_valor"] = treinar(painel_valor_grupo(longo, quebra, grupos), f"ans_{quebra}_valor", janela=12)
     modelos["valor"] = treinar(painel_valor(longo), "ans_valor", janela=12)
     gravar(longo, modelos)
 

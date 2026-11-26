@@ -1,6 +1,9 @@
 const estadoEl = document.querySelector("#estado");
 const grupoEl = document.querySelector("#grupo");
 const caixaGrupo = document.querySelector("#caixa-grupo");
+const rotuloGrupo = document.querySelector("#rotulo-grupo");
+const vistaEl = document.querySelector("#vista");
+const caixaVista = document.querySelector("#caixa-vista");
 const inicioEl = document.querySelector("#inicio");
 const cenarioEl = document.querySelector("#cenario");
 const cenarioValor = document.querySelector("#cenario-valor");
@@ -22,6 +25,8 @@ const TEXTO = {
   diagnostico: "Os quinze CID mais frequentes em Minas Gerais, o restante e a internação sem CID.",
   obito: "Internações com motivo de saída por óbito.",
   uti: "Internações com pelo menos uma diária de UTI.",
+  modalidade: "Internações pela modalidade da operadora.",
+  porte: "Internações pelo porte da operadora.",
   valor: "Valor pago no evento, em reais da época, a partir de 2023.",
   ticket: "Ticket médio: valor pago dividido pelo número de internações.",
 };
@@ -47,20 +52,29 @@ function fator() {
   return 1 + Number(cenarioEl.value) / 100;
 }
 
+function operadora() {
+  return quebraAtual === "modalidade" || quebraAtual === "porte";
+}
+
+function vistaTicket() {
+  return operadora() && vistaEl.value === "ticket";
+}
+
 function dinheiro(quebra) {
-  return quebra === "valor" || quebra === "ticket";
+  return quebra === "valor" || quebra === "ticket" || vistaTicket();
 }
 
 function aplicar(valores) {
   if (!valores) return null;
   const escala = fator();
-  const casas = quebraAtual === "ticket" ? 2 : 0;
+  const casas = quebraAtual === "ticket" || vistaTicket() ? 2 : 0;
   const potencia = 10 ** casas;
-  return valores.map((valor) => Math.max(0, Math.round(valor * escala * potencia) / potencia));
+  return valores.map((valor) => (valor == null ? null : Math.max(0, Math.round(valor * escala * potencia) / potencia)));
 }
 
 function formatarNumero(valor) {
-  if (quebraAtual === "ticket") {
+  if (valor == null || Number.isNaN(valor)) return "—";
+  if (quebraAtual === "ticket" || vistaTicket()) {
     return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
   if (quebraAtual === "valor") {
@@ -88,7 +102,7 @@ function grupoSelecionado() {
 
 function serieAtual() {
   const sigla = estadoEl.value;
-  if (dinheiro(quebraAtual)) {
+  if (quebraAtual === "valor" || quebraAtual === "ticket") {
     const bloco = ans.valor.series[sigla];
     const rotulo = quebraAtual === "valor" ? "valor pago" : "ticket médio";
     const tft = bloco[`${quebraAtual}_tft`] || null;
@@ -113,18 +127,39 @@ function serieAtual() {
     };
   }
   const grupo = grupoSelecionado();
-  const quebra = ans.quebras[quebraAtual];
+  const serie = ans.quebras[quebraAtual].series[sigla][grupo];
+  if (vistaTicket()) {
+    const inicio = ans.meses.indexOf(ans.valor.meses[0]);
+    const observado = ans.valor.meses.map((_, i) => {
+      const quantidade = serie.observado[inicio + i];
+      return quantidade ? serie.valor[i] / quantidade : null;
+    });
+    const razao = (contagem, pago) => contagem.map((quantidade, i) => (quantidade ? pago[i] / quantidade : null));
+    return {
+      meses: ans.valor.meses,
+      horizonte: ans.horizonte,
+      nome: `${nomeEstado(sigla)}, ${grupo}, ticket médio`,
+      valores: {
+        observado,
+        tft: razao(serie.tft, serie.valor_tft),
+        lstm: razao(serie.lstm, serie.valor_lstm),
+        ano_anterior: observado.slice(-12),
+      },
+    };
+  }
   return {
     meses: ans.meses,
     horizonte: ans.horizonte,
     nome: `${nomeEstado(sigla)}, ${grupo}`,
-    valores: quebra.series[sigla][grupo],
+    valores: serie,
   };
 }
 
 function atualizarGrupo() {
   const mostra = !["total", "obito", "uti", "valor", "ticket"].includes(quebraAtual);
   caixaGrupo.hidden = !mostra;
+  caixaVista.hidden = !operadora();
+  rotuloGrupo.textContent = quebraAtual === "porte" ? "Porte" : quebraAtual === "modalidade" ? "Modalidade" : "Grupo";
   if (!mostra) return;
   const grupos = ans.quebras[quebraAtual].grupos;
   const atual = grupoEl.value;
@@ -150,7 +185,7 @@ function desenhar() {
   const margem = { topo: 16, direita: 16, baixo: 52, esquerda: dinheiro(quebraAtual) ? 96 : 72 };
   const internoL = largura - margem.esquerda - margem.direita;
   const internoA = altura - margem.topo - margem.baixo;
-  const pontos = observado.concat(tft || [], lstm || [], anterior || []);
+  const pontos = observado.concat(tft || [], lstm || [], anterior || []).filter((valor) => valor != null && !Number.isNaN(valor));
   const minimo = Math.min(...pontos);
   const maximo = Math.max(...pontos);
   const folga = (maximo - minimo) * 0.08 || 1;
@@ -176,7 +211,16 @@ function desenhar() {
     datas += `<text x="${xDe(i).toFixed(1)}" y="${margem.topo + internoA + 18}" text-anchor="middle" fill="#57534e" font-size="12">${rotulo}</text>`;
   });
   const linha = (serie, deslocamento, cor, extra) => {
-    const d = serie.map((valor, i) => `${i === 0 ? "M" : "L"} ${xDe(i + deslocamento).toFixed(1)} ${yDe(valor).toFixed(1)}`).join(" ");
+    let d = "";
+    let mover = true;
+    serie.forEach((valor, i) => {
+      if (valor == null || Number.isNaN(valor)) {
+        mover = true;
+        return;
+      }
+      d += `${mover ? "M" : "L"} ${xDe(i + deslocamento).toFixed(1)} ${yDe(valor).toFixed(1)} `;
+      mover = false;
+    });
     return `<path d="${d}" fill="none" stroke="${cor}" stroke-width="2.2" ${extra}></path>`;
   };
   let faixa = "";
@@ -263,6 +307,7 @@ function fraseMovimento(delta, base) {
 
 function escreverTabela(linhas, previsto) {
   const corpoAnual = document.querySelector("#tabela-anual tbody");
+  document.querySelector("#tabela-anual thead tr").innerHTML = "<th>Ano</th><th>Internações</th><th>Contra o anterior</th><th>Contra a média</th>";
   const tituloColuna = document.querySelector("#tabela-anual thead th:nth-child(2)");
   corpoAnual.replaceChildren();
   tituloColuna.textContent = quebraAtual === "valor" ? "Valor pago" : quebraAtual === "ticket" ? "Ticket médio" : "Internações";
@@ -416,14 +461,18 @@ function escreverAnalise() {
   analiseTexto.replaceChildren();
   const sigla = estadoEl.value;
   const estado = ans.estados.find((item) => item.sigla === sigla);
-  const dinheiroSemPrevisao = dinheiro(quebraAtual) && !ans.valor.series[sigla].valor_tft;
+  const dinheiroSemPrevisao = (quebraAtual === "valor" || quebraAtual === "ticket") && !ans.valor.series[sigla].valor_tft;
   document.querySelector("#analise h2").textContent = dinheiroSemPrevisao ? "Total do ano" : "Total do ano e a previsão";
-  if (dinheiro(quebraAtual)) {
+  if (quebraAtual === "valor" || quebraAtual === "ticket") {
     escreverDinheiro(sigla);
     return;
   }
   if (quebraAtual === "obito" || quebraAtual === "uti") {
     escreverSerieCurta(sigla, ans.quebras[quebraAtual].series[sigla][grupoSelecionado()], grupoSelecionado());
+    return;
+  }
+  if (operadora()) {
+    escreverOperadora(sigla);
     return;
   }
   const linhas = periodos(ans.meses, estado.observado, false);
@@ -472,8 +521,78 @@ abas.addEventListener("click", (evento) => {
   abas.querySelectorAll("button").forEach((item) => item.classList.toggle("ativa", item === botao));
   desenhar();
 });
+function ticketDoAno(serie, ano) {
+  const corte = ans.meses.indexOf(ans.valor.meses[0]);
+  let pago = 0;
+  let quantidade = 0;
+  ans.meses.forEach((mes, indice) => {
+    if (!mes.startsWith(String(ano)) || indice < corte) return;
+    pago += serie.valor[indice - corte];
+    quantidade += serie.observado[indice];
+  });
+  return quantidade ? pago / quantidade : null;
+}
+
+function escreverOperadora(sigla) {
+  const grupo = grupoSelecionado();
+  const serie = ans.quebras[quebraAtual].series[sigla][grupo];
+  const linhas = periodos(ans.meses, serie.observado, false);
+  const visto = vistaTicket();
+  const corpoAnual = document.querySelector("#tabela-anual tbody");
+  document.querySelector("#tabela-anual thead tr").innerHTML = "<th>Ano</th><th>Internações</th><th>Ticket médio</th><th>Contra o anterior</th><th>Contra a média</th>";
+  corpoAnual.replaceChildren();
+  const base = visto
+    ? linhas.map((linha) => ticketDoAno(serie, linha.rotulo)).filter((item) => item != null)
+    : linhas.map((linha) => linha.total);
+  const media = base.reduce((total, valor) => total + valor, 0) / base.length;
+  let anterior = null;
+  linhas.forEach((linha) => {
+    const ticket = ticketDoAno(serie, linha.rotulo);
+    const atual = visto ? ticket : linha.total;
+    const contraAnterior = anterior == null || atual == null ? "—" : `${atual >= anterior ? "+" : "−"}${pct1((atual - anterior) / anterior)}`;
+    const contraMedia = atual == null ? "—" : `${atual >= media ? "+" : "−"}${pct1((atual - media) / media)}`;
+    const tr = document.createElement("tr");
+    tr.append(celula(linha.rotulo), celula(numero.format(Math.round(linha.total))), celula(ticket == null ? "—" : reaisCentavos(ticket)), celula(contraAnterior), celula(contraMedia));
+    corpoAnual.appendChild(tr);
+    if (atual != null) anterior = atual;
+  });
+  const quantidadePrevista = soma(serie.tft);
+  const ticketPrevisto = quantidadePrevista ? soma(serie.valor_tft) / quantidadePrevista : null;
+  const ultimo = visto ? ticketDoAno(serie, linhas.at(-1).rotulo) : linhas.at(-1).total;
+  const previsto = visto ? ticketPrevisto : quantidadePrevista;
+  const delta = previsto - ultimo;
+  const tr = document.createElement("tr");
+  tr.className = "previsto";
+  tr.append(
+    celula("2026, previsão"),
+    celula(numero.format(Math.round(quantidadePrevista))),
+    celula(ticketPrevisto == null ? "—" : reaisCentavos(ticketPrevisto)),
+    celula(`${delta >= 0 ? "+" : "−"}${pct1(ultimo ? delta / ultimo : 0)}`),
+    celula(`${previsto >= media ? "+" : "−"}${pct1(media ? (previsto - media) / media : 0)}`),
+  );
+  corpoAnual.appendChild(tr);
+  const explicacao = quebraAtual === "porte"
+    ? "O porte é o da operadora no cadastro da ANS."
+    : "Cooperativa médica, medicina de grupo, seguradora e autogestão ficam nomeadas. Demais reúne o restante.";
+  const medida = visto ? "o ticket" : "a quantidade";
+  const distancia = visto ? reaisCentavos(Math.abs(delta)) : numero.format(Math.round(Math.abs(delta)));
+  const contraMedia = previsto >= media
+    ? `${pct1((previsto - media) / media)} acima da média`
+    : `${pct1((media - previsto) / media)} abaixo da média`;
+  analiseTexto.append(
+    paragrafo("", `${nomeEstado(sigla)}, ${grupo}. ${explicacao} O ticket é o valor pago dividido pelas internações, em reais da época, e só existe a partir de 2023.`),
+    paragrafo("Previsão", `Em 2026, o TFT soma ${numero.format(Math.round(quantidadePrevista))} internações e o ticket médio do ano fica ${reaisCentavos(ticketPrevisto)}. Em relação a 2025, ${medida} ${delta >= 0 ? "sobe" : "cai"} ${distancia} (${delta >= 0 ? "+" : "−"}${pct1(ultimo ? delta / ultimo : 0)}). Esse nível fica ${contraMedia}.`),
+  );
+  if (fator() !== 1) analiseTexto.append(paragrafo("", "A simulação fica de fora desta leitura e da tabela."));
+}
+
+function reaisCentavos(valor) {
+  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 estadoEl.addEventListener("change", desenhar);
 grupoEl.addEventListener("change", desenhar);
+vistaEl.addEventListener("change", desenhar);
 inicioEl.addEventListener("change", desenhar);
 cenarioEl.addEventListener("input", desenhar);
 

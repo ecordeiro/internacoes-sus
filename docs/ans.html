@@ -25,6 +25,8 @@
     <button type="button" data-quebra="diagnostico">Diagnóstico</button>
     <button type="button" data-quebra="obito">Óbito</button>
     <button type="button" data-quebra="uti">UTI</button>
+    <button type="button" data-quebra="modalidade">Modalidade</button>
+    <button type="button" data-quebra="porte">Porte</button>
     <button type="button" data-quebra="valor">Valor</button>
     <button type="button" data-quebra="ticket">Ticket médio</button>
   </nav>
@@ -35,8 +37,15 @@
       <select id="estado"></select>
     </label>
     <label id="caixa-grupo" hidden>
-      Grupo
+      <span id="rotulo-grupo">Grupo</span>
       <select id="grupo"></select>
+    </label>
+    <label id="caixa-vista" hidden>
+      Ver
+      <select id="vista">
+        <option value="internacoes">internações</option>
+        <option value="ticket">ticket médio</option>
+      </select>
     </label>
     <label>
       Histórico a partir de
@@ -104,6 +113,9 @@
       A série vai de janeiro de 2015 a dezembro de 2025. A previsão cobre 2026.
       Os quinze diagnósticos são os mais frequentes em Minas Gerais nessa base; o restante fica em Demais diagnósticos, e a internação sem CID fica à parte.
       Óbito é o motivo de saída 41, 42 ou 43. UTI é a internação com ao menos uma diária de UTI.
+      A modalidade e o porte são os da operadora. O nome da empresa não vem no arquivo.
+      Cooperativa médica, medicina de grupo, seguradora e autogestão ficam nomeadas; o restante entra em Demais.
+      O porte sem beneficiários no cadastro fica na própria linha.
     </p>
     <p>
       O valor é o pago no evento, em reais da época, e só existe a partir de 2023.
@@ -112,6 +124,6 @@
       A simulação só multiplica a previsão exibida. Ela não treina o modelo de novo e não entra na leitura.
     </p>
   </footer>
-  <script src="ans.js?v=4"></script>
+  <script src="ans.js?v=7"></script>
 </body>
 </html>
